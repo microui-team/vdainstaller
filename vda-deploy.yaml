@@ -268,6 +268,12 @@ services:
       - GIT_CONTROL_URL=http://git-control-app:8008
       - GIT_TOKEN=${GIT_TOKEN}
       - GIT_REPONAME=${GIT_REPONAME}
+      - KAFKA_BROKER={host_ip}:9092
+      - KAFKA_USER={username}
+      - KAFKA_PASSWORD={password}
+      - KAFKA_CONNECT_URL=https://{host_ip}:8083
+      - SCHEMA_REGISTRY_URL=http://{host_ip}:8087
+      - EXPECTATION_TEMPLATE_GIT_URL=/home/git/repos/expectation-templates.json
     #ports:
     #  - "4000:4000"
     volumes:
@@ -356,6 +362,7 @@ services:
     env_file: vda/.env-vda
     environment:
       - TOKEN=${GIT_TOKEN}
+      - LOCAL=True
     #ports:
     #  - "8009:8008"
     networks:
