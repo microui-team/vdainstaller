@@ -2,7 +2,7 @@
 
 x-superset-image: &superset-image microuidigital/superset-app:latest
 x-superset-depends-on: &superset-depends-on
-  - db
+  - postgresql
   - redis
 x-superset-volumes: &superset-volumes
   # /app/pythonpath_docker will be appended to the PYTHONPATH in the final container
@@ -10,7 +10,43 @@ x-superset-volumes: &superset-volumes
   - superset_home:/app/superset_home
 
 version: '3'
+
+volumes:
+  es_data:
+  neo4j_data:
+  superset_home:
+    external: false
+  db_home:
+    external: false
+  redis:
+    external: false/
+  surreal_data:
+  qdrant_storage:
+  marquez_pg_data:
+  kafka_data:
+
 services:
+  postgresql:
+    container_name: openmetadata_postgresql
+    image: docker.getcollate.io/openmetadata/postgresql:1.11.4
+    restart: unless-stopped
+    command: "--work_mem=10MB --max_connections=300"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+     - ./docker-volume/db-data-postgres:/var/lib/postgresql/data
+     - ./docker/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+    networks:
+      - vda
+    healthcheck:
+      test: psql -U postgres -tAc 'select 1' -d openmetadata_db
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
   redis:
     image: redis:7
     container_name: superset_cache
@@ -19,16 +55,16 @@ services:
       - redis:/data
     networks:
       - vda
-
-  db:
-    env_file: vda/.env-non-dev
-    image: postgres:14
-    container_name: superset_db
-    restart: unless-stopped
-    volumes:
-      - db_home:/var/lib/postgresql/data
-    networks:
-      - vda
+  
+  # db:
+  #   env_file: vda/.env-non-dev
+  #   image: postgres:14
+  #   container_name: superset_db
+  #   restart: unless-stopped
+  #   volumes:
+  #     - db_home:/var/lib/postgresql/data
+  #   networks:
+  #     - vda
 
   superset:
     env_file: vda/.env-non-dev
@@ -85,29 +121,9 @@ services:
     networks:
       - vda
 
-  neo4j:
-      image: neo4j:3.5.26
-      container_name: neo4j_amundsen
-      environment:
-        - NEO4J_AUTH=neo4j/test
-      restart: unless-stopped
-      ulimits:
-        nofile:
-          soft: 40000
-          hard: 40000
-      #ports:
-      #    - 7474:7474
-      #    - 7687:7687
-      volumes:
-          - ./data/docker/neo4j/conf:/var/lib/neo4j/conf
-          - ./data/docker/neo4j/plugins:/var/lib/neo4j/plugins
-          - ./data/backup:/backup
-          - neo4j_data:/data
-      networks:
-        - vda
   elasticsearch:
-      image: elasticsearch:8.0.0
-      container_name: es_amundsen
+      image: docker.elastic.co/elasticsearch/elasticsearch:8.11.4
+      container_name: openmetadata_elasticsearch
       restart: unless-stopped
       #ports:
       #    - 9200:9200
@@ -132,76 +148,8 @@ services:
         - bootstrap.memory_lock=true
         - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
         - cluster.routing.allocation.disk.threshold_enabled=false
-  amundsensearch:
-      image: amundsendev/amundsen-search:4.0.2
-      container_name: amundsensearch
-      restart: unless-stopped
-      #ports:
-      #  - 5000:5000
-      depends_on:
-        - elasticsearch
-      networks:
-        - vda
-      environment:
-        - PROXY_ENDPOINT=es_amundsen
-      command: gunicorn -w 2 --bind :5000 search_service.search_wsgi
-  amundsenmetadata:
-      image: amundsendev/amundsen-metadata:3.11.0
-      container_name: amundsenmetadata
-      restart: unless-stopped
-      depends_on:
-        - neo4j
-      #ports:
-      #  - 5001:5000
-      networks:
-        - vda
-      environment:
-         - PROXY_HOST=bolt://neo4j_amundsen
-      command: gunicorn -w 2 --bind :5000 metadata_service.metadata_wsgi
-  amundsenfrontend:
-      image: amundsendev/amundsen-frontend:4.2.0
-      container_name: amundsenfrontend
-      restart: unless-stopped
-      depends_on:
-        - amundsenmetadata
-        - amundsensearch
-      #ports:
-      #- 5002:5000
-      networks:
-        - vda
-      environment:
-        - SEARCHSERVICE_BASE=http://amundsensearch:5000
-        - METADATASERVICE_BASE=http://amundsenmetadata:5000
-        # Only for easy config-less Quickstart bookmark evalutation. `TestConfig` extends ordinary `LocalConfig` by
-        # defining `AUTH_USER_METHOD` to a hardcoded dummy user in `amundsen_application.tests.test_utils.get_test_user()`
-        # See further docs in https://github.com/amundsen-io/amundsenfrontendlibrary/blob/master/docs/configuration.md#flask
-        # and https://github.com/amundsen-io/amundsenfrontendlibrary/blob/master/docs/configuration.md#authentication
-        - FRONTEND_SVC_CONFIG_MODULE_CLASS=amundsen_application.config.TestConfig
-      command: gunicorn -w 2 --bind :5000 amundsen_application.wsgi
-
-  rabbitmq:
-    image: rabbitmq:3.12-management
-    restart: unless-stopped
-    environment:
-      - RABBITMQ_DEFAULT_USER=whiteklay
-      - RABBITMQ_DEFAULT_PASS=password
-    ports:
-      - "15672:15672"
-      - "5672:5672"
-    networks:
-      - vda
-
-  postgres:
-    image: postgres
-    restart: unless-stopped
-    env_file: vda/.env-vda
-    environment:
-      - PGDATA=/var/lib/postgresql/data/pgdata
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-    #ports:
-    #  - "5432:5432"
-    networks:
-      - vda
+      healthcheck:
+        test: "curl -s http://localhost:9200/_cluster/health?pretty | grep status | grep -qE 'green|yellow' || exit 1"
   
   keycloak:
     image: ${IMAGE_REGISTRY}/keycloak:local
@@ -247,13 +195,13 @@ services:
       - KEYCLOAK_ADMIN_USERNAME=${KEYCLOAK_ADMIN_USERNAME}
       - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD}
       - DATABASE_URL=${DATABASE_URL}
-      - DATALOADER_URL=http://api-metadata:8000
-      - DATASEARCH_URL=http://amundsenfrontend:5000
+      - DATALOADER_URL=http://metadata-api:8000
+      - DATASEARCH_URL=http://metadata-api:8000
       - LLMAPI_URL=http://api-llmapi:8081
-      - SUPERSET_URL=http://api-superset:8082
+      - SUPERSET_URL=http://metadata-api:8000
       - ORIG_SUPERSET_URL=${ORIG_SUPERSET_URL}
       - ORIG_SUPERSET_TOKEN=${ORIG_SUPERSET_TOKEN}
-      - AMUNDSEN_METADATA_URL=http://amundsenmetadata:5000
+      - AMUNDSEN_METADATA_URL=http://metadata-api:8000
       - UPLOAD_DIRECTORY=/uploads/
       - MESSAGE_QUEUE_NAME=amundsen_queue
       - MESSAGE_RESPONSE_QUEUE_NAME=amundsen_response_queue
@@ -274,6 +222,10 @@ services:
       - KAFKA_CONNECT_URL=https://{host_ip}:8083
       - SCHEMA_REGISTRY_URL=http://{host_ip}:8087
       - EXPECTATION_TEMPLATE_GIT_URL=/home/git/repos/expectation-templates.json
+      - TEMPORAL_HOST=temporal:7233
+      - TEMPORAL_NAMESPACE=default
+      - TEMPORAL_TASK_QUEUE=datasource-creation-queue
+      - TEMPORAL_NOTIFICATION_QUEUE=notification-queue
     #ports:
     #  - "4000:4000"
     volumes:
@@ -281,12 +233,9 @@ services:
     networks:
       - vda
     depends_on:
-      - postgres
-      - rabbitmq
+      - postgresql
       - keycloak
-      - api-superset
       - api-llmapi
-      - api-metadata
 
 
   api-superset:
@@ -301,29 +250,6 @@ services:
       - PORT=8082
     #ports:
     #  - "8082:8082"
-    networks:
-      - vda
-
-
-  api-metadata:
-    image: ${IMAGE_REGISTRY}/vda-metadata:${GIT_SHA}
-    restart: unless-stopped
-    env_file: vda/.env-vda
-    environment:
-      - ELASTICSEARCH_URL=es_amundsen
-      - NEO4J_URL=bolt://neo4j_amundsen:7687
-      - NEO4J_USER_NAME=neo4j
-      - NEO4J_PASSWORD=test
-      - NEO4J_FRONTEND_URL=http://neo4j_amundsen:7474
-      - MESSAGE_RESPONSE_QUEUE_NAME=${MESSAGE_RESPONSE_QUEUE_NAME}
-      - MESSAGE_QUEUE_NAME=${MESSAGE_QUEUE_NAME}
-      - MESSAGE_QUEUE_PORT=5672
-      - MESSAGE_QUEUE_USER=${MESSAGE_QUEUE_USER}
-      - MESSAGE_QUEUE_PASSWORD=${MESSAGE_QUEUE_PASSWORD}
-      - MESSAGE_QUEUE_HOST=${MESSAGE_QUEUE_HOST}
-      - SENTENCE_TRANSFORMER_URL=http://sentencetransformer:8084
-    #ports:
-    #  - "8000:8000"
     networks:
       - vda
 
@@ -346,16 +272,41 @@ services:
     networks:
       - vda
 
-  sentencetransformer:
-    image: ${IMAGE_REGISTRY}/vda-sentencetransformer:${GIT_SHA}
+  metadata-api:
+    image: ${IMAGE_REGISTRY}/vda-metadata:${GIT_SHA}
     restart: unless-stopped
+    container_name: metadata_api
+    depends_on:
+      surrealdb:
+        condition: service_started
+      marquez:
+        condition: service_started
+      qdrant:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+      openmetadata-server:
+        condition: service_healthy
+    ports:
+      - "8007:8000"
+    command: ["python", "-m", "src.main"]
     environment:
-      - ELASTICSEARCH_URL=http://es_amundsen:9200
-    #ports:
-    #  - "8084:8084"
+      - SURREAL_WSS_URL=ws://surrealdb:8000/rpc
+      - SURREAL_NS=test
+      - SURREAL_DB=lineage
+      - SURREAL_USER=root
+      - SURREAL_PASS=secret
+      - MARQUEZ_URL=http://marquez:5000
+      - QDRANT_URL=http://qdrant:6333
+      - OM_HOST=http://openmetadata-server:8585/api
+      - SUPERSET_URL=http://superset:8088
+      - TEMPORAL_HOST=temporal:7233
+      - POSTGRES_HOST=postgresql
+      - POSTGRES_USER=postgres
+      - POSTGRES_PWD=password
+
     networks:
       - vda
-
   git-control-app:
     image: ${IMAGE_REGISTRY}/vda-gitcontrolapp:latest
     restart: unless-stopped
@@ -367,18 +318,714 @@ services:
     #  - "8009:8008"
     networks:
       - vda
+  execute-migrate-all:
+    container_name: execute_migrate_all
+    image: docker.getcollate.io/openmetadata/server:1.11.4
+    command: "./bootstrap/openmetadata-ops.sh migrate"
+    environment:
+      OPENMETADATA_CLUSTER_NAME: ${OPENMETADATA_CLUSTER_NAME:-openmetadata}
+      SERVER_PORT: ${SERVER_PORT:-8585}
+      SERVER_ADMIN_PORT: ${SERVER_ADMIN_PORT:-8586}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+      # Migration
+      MIGRATION_LIMIT_PARAM: ${MIGRATION_LIMIT_PARAM:-1200}
+
+      # OpenMetadata Server Authentication Configuration
+      AUTHORIZER_CLASS_NAME: ${AUTHORIZER_CLASS_NAME:-org.openmetadata.service.security.NoopAuthorizer}
+      AUTHORIZER_REQUEST_FILTER: ${AUTHORIZER_REQUEST_FILTER:-org.openmetadata.service.security.NoopFilter}
+      AUTHORIZER_ADMIN_PRINCIPALS: ${AUTHORIZER_ADMIN_PRINCIPALS:-[admin]}
+      AUTHORIZER_ALLOWED_REGISTRATION_DOMAIN: ${AUTHORIZER_ALLOWED_REGISTRATION_DOMAIN:-["all"]}
+      AUTHORIZER_INGESTION_PRINCIPALS: ${AUTHORIZER_INGESTION_PRINCIPALS:-[ingestion-bot]}
+      AUTHORIZER_PRINCIPAL_DOMAIN: ${AUTHORIZER_PRINCIPAL_DOMAIN:-"open-metadata.org"}
+      AUTHORIZER_ALLOWED_DOMAINS: ${AUTHORIZER_ALLOWED_DOMAINS:-[]}
+      AUTHORIZER_ENFORCE_PRINCIPAL_DOMAIN: ${AUTHORIZER_ENFORCE_PRINCIPAL_DOMAIN:-false}
+      AUTHORIZER_ENABLE_SECURE_SOCKET: ${AUTHORIZER_ENABLE_SECURE_SOCKET:-false}
+      AUTHENTICATION_PROVIDER: ${AUTHENTICATION_PROVIDER:-basic}
+      AUTHENTICATION_RESPONSE_TYPE: ${AUTHENTICATION_RESPONSE_TYPE:-id_token}
+      CUSTOM_OIDC_AUTHENTICATION_PROVIDER_NAME: ${CUSTOM_OIDC_AUTHENTICATION_PROVIDER_NAME:-""}
+      AUTHENTICATION_PUBLIC_KEYS: ${AUTHENTICATION_PUBLIC_KEYS:-[http://localhost:8585/api/v1/system/config/jwks]}
+      AUTHENTICATION_AUTHORITY: ${AUTHENTICATION_AUTHORITY:-https://accounts.google.com}
+      AUTHENTICATION_CLIENT_ID: ${AUTHENTICATION_CLIENT_ID:-""}
+      AUTHENTICATION_CALLBACK_URL: ${AUTHENTICATION_CALLBACK_URL:-""}
+      AUTHENTICATION_JWT_PRINCIPAL_CLAIMS: ${AUTHENTICATION_JWT_PRINCIPAL_CLAIMS:-[email,preferred_username,sub]}
+      AUTHENTICATION_JWT_PRINCIPAL_CLAIMS_MAPPING: ${AUTHENTICATION_JWT_PRINCIPAL_CLAIMS_MAPPING:-[]}
+      AUTHENTICATION_ENABLE_SELF_SIGNUP: ${AUTHENTICATION_ENABLE_SELF_SIGNUP:-true}
+      AUTHENTICATION_CLIENT_TYPE: ${AUTHENTICATION_CLIENT_TYPE:-public}
+      #For OIDC Authentication, when client is confidential
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-""}
+      OIDC_TYPE: ${OIDC_TYPE:-""} # google, azure etc.
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-""}
+      OIDC_SCOPE: ${OIDC_SCOPE:-"openid email profile"}
+      OIDC_DISCOVERY_URI: ${OIDC_DISCOVERY_URI:-""}
+      OIDC_USE_NONCE: ${OIDC_USE_NONCE:-true}
+      OIDC_PREFERRED_JWS: ${OIDC_PREFERRED_JWS:-"RS256"}
+      OIDC_RESPONSE_TYPE: ${OIDC_RESPONSE_TYPE:-"code"}
+      OIDC_DISABLE_PKCE: ${OIDC_DISABLE_PKCE:-true}
+      OIDC_CALLBACK: ${OIDC_CALLBACK:-"http://localhost:8585/callback"}
+      OIDC_SERVER_URL: ${OIDC_SERVER_URL:-"http://localhost:8585"}
+      OIDC_CLIENT_AUTH_METHOD: ${OIDC_CLIENT_AUTH_METHOD:-"client_secret_post"}
+      OIDC_TENANT: ${OIDC_TENANT:-""}
+      OIDC_MAX_CLOCK_SKEW: ${OIDC_MAX_CLOCK_SKEW:-""}
+      OIDC_CUSTOM_PARAMS: ${OIDC_CUSTOM_PARAMS:-{}}
+      OIDC_MAX_AGE: ${OIDC_MAX_AGE:-"0"}
+      OIDC_PROMPT_TYPE: ${OIDC_PROMPT_TYPE:-"consent"}
+      OIDC_SESSION_EXPIRY: ${OIDC_SESSION_EXPIRY:-"604800"}
+      # For SAML Authentication
+      # SAML_DEBUG_MODE: ${SAML_DEBUG_MODE:-false}
+      # SAML_IDP_ENTITY_ID: ${SAML_IDP_ENTITY_ID:-""}
+      # SAML_IDP_SSO_LOGIN_URL: ${SAML_IDP_SSO_LOGIN_URL:-""}
+      # SAML_IDP_CERTIFICATE: ${SAML_IDP_CERTIFICATE:-""}
+      # SAML_AUTHORITY_URL: ${SAML_AUTHORITY_URL:-"http://localhost:8585/api/v1/saml/login"}
+      # SAML_IDP_NAME_ID: ${SAML_IDP_NAME_ID:-"urn:oasis:names:tc:SAML:2.0:nameid-format:emailAddress"}
+      # SAML_SP_ENTITY_ID: ${SAML_SP_ENTITY_ID:-"http://localhost:8585/api/v1/saml/metadata"}
+      # SAML_SP_ACS: ${SAML_SP_ACS:-"http://localhost:8585/api/v1/saml/acs"}
+      # SAML_SP_CERTIFICATE: ${SAML_SP_CERTIFICATE:-""}
+      # SAML_SP_CALLBACK: ${SAML_SP_CALLBACK:-"http://localhost:8585/saml/callback"}
+      # SAML_STRICT_MODE: ${SAML_STRICT_MODE:-false}
+      # SAML_SP_TOKEN_VALIDITY: ${SAML_SP_TOKEN_VALIDITY:-"3600"}
+      # SAML_SEND_ENCRYPTED_NAME_ID: ${SAML_SEND_ENCRYPTED_NAME_ID:-false}
+      # SAML_SEND_SIGNED_AUTH_REQUEST: ${SAML_SEND_SIGNED_AUTH_REQUEST:-false}
+      # SAML_SIGNED_SP_METADATA: ${SAML_SIGNED_SP_METADATA:-false}
+      # SAML_WANT_MESSAGE_SIGNED: ${SAML_WANT_MESSAGE_SIGNED:-false}
+      # SAML_WANT_ASSERTION_SIGNED: ${SAML_WANT_ASSERTION_SIGNED:-false}
+      # SAML_WANT_ASSERTION_ENCRYPTED: ${SAML_WANT_ASSERTION_ENCRYPTED:-false}
+      # SAML_WANT_NAME_ID_ENCRYPTED: ${SAML_WANT_NAME_ID_ENCRYPTED:-false}
+      # SAML_KEYSTORE_FILE_PATH: ${SAML_KEYSTORE_FILE_PATH:-""}
+      # SAML_KEYSTORE_ALIAS: ${SAML_KEYSTORE_ALIAS:-""}
+      # SAML_KEYSTORE_PASSWORD: ${SAML_KEYSTORE_PASSWORD:-""}
+      # For LDAP Authentication
+      # AUTHENTICATION_LDAP_HOST: ${AUTHENTICATION_LDAP_HOST:-}
+      # AUTHENTICATION_LDAP_PORT: ${AUTHENTICATION_LDAP_PORT:-}
+      # AUTHENTICATION_LOOKUP_ADMIN_DN: ${AUTHENTICATION_LOOKUP_ADMIN_DN:-""}
+      # AUTHENTICATION_LOOKUP_ADMIN_PWD: ${AUTHENTICATION_LOOKUP_ADMIN_PWD:-""}
+      # AUTHENTICATION_USER_LOOKUP_BASEDN: ${AUTHENTICATION_USER_LOOKUP_BASEDN:-""}
+      # AUTHENTICATION_USER_MAIL_ATTR: ${AUTHENTICATION_USER_MAIL_ATTR:-}
+      # AUTHENTICATION_LDAP_POOL_SIZE: ${AUTHENTICATION_LDAP_POOL_SIZE:-3}
+      # AUTHENTICATION_LDAP_SSL_ENABLED: ${AUTHENTICATION_LDAP_SSL_ENABLED:-}
+      # AUTHENTICATION_LDAP_TRUSTSTORE_TYPE: ${AUTHENTICATION_LDAP_TRUSTSTORE_TYPE:-TrustAll}
+      # AUTHENTICATION_LDAP_TRUSTSTORE_PATH: ${AUTHENTICATION_LDAP_TRUSTSTORE_PATH:-}
+      # AUTHENTICATION_LDAP_KEYSTORE_PASSWORD: ${AUTHENTICATION_LDAP_KEYSTORE_PASSWORD:-}
+      # AUTHENTICATION_LDAP_SSL_KEY_FORMAT: ${AUTHENTICATION_LDAP_SSL_KEY_FORMAT:-}
+      # AUTHENTICATION_LDAP_ALLOW_WILDCARDS: ${AUTHENTICATION_LDAP_ALLOW_WILDCARDS:-}
+      # AUTHENTICATION_LDAP_ALLOWED_HOSTNAMES: ${AUTHENTICATION_LDAP_ALLOWED_HOSTNAMES:-[]}
+      # AUTHENTICATION_LDAP_SSL_VERIFY_CERT_HOST: ${AUTHENTICATION_LDAP_SSL_VERIFY_CERT_HOST:-}
+      # AUTHENTICATION_LDAP_EXAMINE_VALIDITY_DATES: ${AUTHENTICATION_LDAP_EXAMINE_VALIDITY_DATES:-true}
+
+      # JWT Configuration
+      RSA_PUBLIC_KEY_FILE_PATH: ${RSA_PUBLIC_KEY_FILE_PATH:-"./conf/public_key.der"}
+      RSA_PRIVATE_KEY_FILE_PATH: ${RSA_PRIVATE_KEY_FILE_PATH:-"./conf/private_key.der"}
+      JWT_ISSUER: ${JWT_ISSUER:-"open-metadata.org"}
+      JWT_KEY_ID: ${JWT_KEY_ID:-"Gb389a-9f76-gdjs-a92j-0242bk94356"}
+      # OpenMetadata Server Pipeline Service Client Configuration
+      PIPELINE_SERVICE_CLIENT_ENDPOINT: ${PIPELINE_SERVICE_CLIENT_ENDPOINT:-http://ingestion:8080}
+      PIPELINE_SERVICE_CLIENT_HEALTH_CHECK_INTERVAL: ${PIPELINE_SERVICE_CLIENT_HEALTH_CHECK_INTERVAL:-300}
+      SERVER_HOST_API_URL: ${SERVER_HOST_API_URL:-http://openmetadata-server:8585/api}
+      PIPELINE_SERVICE_CLIENT_VERIFY_SSL: ${PIPELINE_SERVICE_CLIENT_VERIFY_SSL:-"no-ssl"}
+      PIPELINE_SERVICE_CLIENT_SSL_CERT_PATH: ${PIPELINE_SERVICE_CLIENT_SSL_CERT_PATH:-""}
+      #Database configuration for postgresql
+      DB_DRIVER_CLASS: ${DB_DRIVER_CLASS:-org.postgresql.Driver}
+      DB_SCHEME: ${DB_SCHEME:-postgresql}
+      DB_PARAMS: ${DB_PARAMS:-allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC}
+      DB_USER: ${DB_USER:-openmetadata_user}
+      DB_USER_PASSWORD: ${DB_USER_PASSWORD:-openmetadata_password}
+      DB_HOST: ${DB_HOST:-postgresql}
+      DB_PORT: ${DB_PORT:-5432}
+      OM_DATABASE: ${OM_DATABASE:-openmetadata_db}
+      # ElasticSearch Configurations
+      ELASTICSEARCH_HOST: ${ELASTICSEARCH_HOST:- elasticsearch}
+      ELASTICSEARCH_PORT: ${ELASTICSEARCH_PORT:-9200}
+      ELASTICSEARCH_SCHEME: ${ELASTICSEARCH_SCHEME:-http}
+      ELASTICSEARCH_USER: ${ELASTICSEARCH_USER:-""}
+      ELASTICSEARCH_PASSWORD: ${ELASTICSEARCH_PASSWORD:-""}
+      SEARCH_TYPE: ${SEARCH_TYPE:- "elasticsearch"}
+      ELASTICSEARCH_TRUST_STORE_PATH: ${ELASTICSEARCH_TRUST_STORE_PATH:-""}
+      ELASTICSEARCH_TRUST_STORE_PASSWORD: ${ELASTICSEARCH_TRUST_STORE_PASSWORD:-""}
+      ELASTICSEARCH_CONNECTION_TIMEOUT_SECS: ${ELASTICSEARCH_CONNECTION_TIMEOUT_SECS:-5}
+      ELASTICSEARCH_SOCKET_TIMEOUT_SECS: ${ELASTICSEARCH_SOCKET_TIMEOUT_SECS:-60}
+      ELASTICSEARCH_KEEP_ALIVE_TIMEOUT_SECS: ${ELASTICSEARCH_KEEP_ALIVE_TIMEOUT_SECS:-600}
+      ELASTICSEARCH_BATCH_SIZE: ${ELASTICSEARCH_BATCH_SIZE:-100}
+      ELASTICSEARCH_PAYLOAD_BYTES_SIZE: ${ELASTICSEARCH_PAYLOAD_BYTES_SIZE:-10485760}   #max payLoadSize in Bytes
+      ELASTICSEARCH_INDEX_MAPPING_LANG: ${ELASTICSEARCH_INDEX_MAPPING_LANG:-EN}
+
+      #eventMonitoringConfiguration
+      EVENT_MONITOR: ${EVENT_MONITOR:-prometheus}
+      EVENT_MONITOR_BATCH_SIZE: ${EVENT_MONITOR_BATCH_SIZE:-10}
+      EVENT_MONITOR_PATH_PATTERN: ${EVENT_MONITOR_PATH_PATTERN:-["/api/v1/tables/*", "/api/v1/health-check"]}
+      EVENT_MONITOR_LATENCY: ${EVENT_MONITOR_LATENCY:-[]}
+
+      #pipelineServiceClientConfiguration
+      PIPELINE_SERVICE_CLIENT_ENABLED: ${PIPELINE_SERVICE_CLIENT_ENABLED:-true}
+      PIPELINE_SERVICE_CLIENT_CLASS_NAME: ${PIPELINE_SERVICE_CLIENT_CLASS_NAME:-"org.openmetadata.service.clients.pipeline.airflow.AirflowRESTClient"}
+      PIPELINE_SERVICE_IP_INFO_ENABLED: ${PIPELINE_SERVICE_IP_INFO_ENABLED:-false}
+      PIPELINE_SERVICE_CLIENT_HOST_IP: ${PIPELINE_SERVICE_CLIENT_HOST_IP:-""}
+      PIPELINE_SERVICE_CLIENT_SECRETS_MANAGER_LOADER: ${PIPELINE_SERVICE_CLIENT_SECRETS_MANAGER_LOADER:-"noop"}
+      #airflow parameters
+      AIRFLOW_USERNAME: ${AIRFLOW_USERNAME:-admin}
+      AIRFLOW_PASSWORD: ${AIRFLOW_PASSWORD:-admin}
+      AIRFLOW_TIMEOUT: ${AIRFLOW_TIMEOUT:-10}
+      AIRFLOW_TRUST_STORE_PATH: ${AIRFLOW_TRUST_STORE_PATH:-""}
+      AIRFLOW_TRUST_STORE_PASSWORD: ${AIRFLOW_TRUST_STORE_PASSWORD:-""}
+      FERNET_KEY: ${FERNET_KEY:-jJ/9sz0g0OHxsfxOoSfdFdmk3ysNmPRnH3TUAbz3IHA=}
+
+      #secretsManagerConfiguration
+      SECRET_MANAGER: ${SECRET_MANAGER:-db}
+      # AWS:
+      OM_SM_REGION: ${OM_SM_REGION:-""}
+      OM_SM_ACCESS_KEY_ID: ${OM_SM_ACCESS_KEY_ID:-""}
+      OM_SM_ACCESS_KEY: ${OM_SM_ACCESS_KEY:-""}
+      # Azure:
+      OM_SM_VAULT_NAME: ${OM_SM_VAULT_NAME:-""}
+      OM_SM_CLIENT_ID: ${OM_SM_CLIENT_ID:-""}
+      OM_SM_CLIENT_SECRET: ${OM_SM_CLIENT_SECRET:-""}
+      OM_SM_TENANT_ID: ${OM_SM_TENANT_ID:-""}
+
+      #email configuration:
+      OM_EMAIL_ENTITY: ${OM_EMAIL_ENTITY:-"OpenMetadata"}
+      OM_SUPPORT_URL: ${OM_SUPPORT_URL:-"https://slack.open-metadata.org"}
+      AUTHORIZER_ENABLE_SMTP : ${AUTHORIZER_ENABLE_SMTP:-false}
+      OPENMETADATA_SERVER_URL: ${OPENMETADATA_SERVER_URL:-""}
+      OPENMETADATA_SMTP_SENDER_MAIL: ${OPENMETADATA_SMTP_SENDER_MAIL:-""}
+      SMTP_SERVER_ENDPOINT: ${SMTP_SERVER_ENDPOINT:-""}
+      SMTP_SERVER_PORT: ${SMTP_SERVER_PORT:-""}
+      SMTP_SERVER_USERNAME: ${SMTP_SERVER_USERNAME:-""}
+      SMTP_SERVER_PWD: ${SMTP_SERVER_PWD:-""}
+      SMTP_SERVER_STRATEGY: ${SMTP_SERVER_STRATEGY:-"SMTP_TLS"}
+
+      # Heap OPTS Configurations
+      OPENMETADATA_HEAP_OPTS: ${OPENMETADATA_HEAP_OPTS:--Xmx1G -Xms1G}
+      # Mask passwords values in UI
+      MASK_PASSWORDS_API: ${MASK_PASSWORDS_API:-false}
+
+      #OpenMetadata Web Configuration
+      WEB_CONF_URI_PATH: ${WEB_CONF_URI_PATH:-"/api"}
+      #HSTS
+      WEB_CONF_HSTS_ENABLED: ${WEB_CONF_HSTS_ENABLED:-false}
+      WEB_CONF_HSTS_MAX_AGE: ${WEB_CONF_HSTS_MAX_AGE:-"365 days"}
+      WEB_CONF_HSTS_INCLUDE_SUBDOMAINS: ${WEB_CONF_HSTS_INCLUDE_SUBDOMAINS:-"true"}
+      WEB_CONF_HSTS_PRELOAD: ${WEB_CONF_HSTS_PRELOAD:-"true"}
+      #Frame Options
+      WEB_CONF_FRAME_OPTION_ENABLED: ${WEB_CONF_FRAME_OPTION_ENABLED:-false}
+      WEB_CONF_FRAME_OPTION: ${WEB_CONF_FRAME_OPTION:-"SAMEORIGIN"}
+      WEB_CONF_FRAME_ORIGIN: ${WEB_CONF_FRAME_ORIGIN:-""}
+      #Content Type
+      WEB_CONF_CONTENT_TYPE_OPTIONS_ENABLED: ${WEB_CONF_CONTENT_TYPE_OPTIONS_ENABLED:-false}
+      #XSS-Protection
+      WEB_CONF_XSS_PROTECTION_ENABLED: ${WEB_CONF_XSS_PROTECTION_ENABLED:-false}
+      WEB_CONF_XSS_PROTECTION_ON: ${WEB_CONF_XSS_PROTECTION_ON:-true}
+      WEB_CONF_XSS_PROTECTION_BLOCK: ${WEB_CONF_XSS_PROTECTION_BLOCK:-true}
+      #CSP
+      WEB_CONF_XSS_CSP_ENABLED: ${WEB_CONF_XSS_CSP_ENABLED:-false}
+      WEB_CONF_XSS_CSP_POLICY: ${WEB_CONF_XSS_CSP_POLICY:-"default-src 'self'"}
+      WEB_CONF_XSS_CSP_REPORT_ONLY_POLICY: ${WEB_CONF_XSS_CSP_REPORT_ONLY_POLICY:-""}
+      #Referrer-Policy
+      WEB_CONF_REFERRER_POLICY_ENABLED: ${WEB_CONF_REFERRER_POLICY_ENABLED:-false}
+      WEB_CONF_REFERRER_POLICY_OPTION: ${WEB_CONF_REFERRER_POLICY_OPTION:-"SAME_ORIGIN"}
+      #Permission-Policy
+      WEB_CONF_PERMISSION_POLICY_ENABLED: ${WEB_CONF_PERMISSION_POLICY_ENABLED:-false}
+      WEB_CONF_PERMISSION_POLICY_OPTION: ${WEB_CONF_PERMISSION_POLICY_OPTION:-""}
+      #Cache
+      WEB_CONF_CACHE_CONTROL: ${WEB_CONF_CACHE_CONTROL:-""}
+      WEB_CONF_PRAGMA: ${WEB_CONF_PRAGMA:-""}
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      postgresql:
+        condition: service_healthy
+    networks:
+      - vda
+
+  openmetadata-server:
+    container_name: openmetadata_server
+    restart: unless-stopped
+    image: docker.getcollate.io/openmetadata/server:1.11.4
+    environment:
+      OPENMETADATA_CLUSTER_NAME: ${OPENMETADATA_CLUSTER_NAME:-openmetadata}
+      SERVER_PORT: ${SERVER_PORT:-8585}
+      SERVER_ADMIN_PORT: ${SERVER_ADMIN_PORT:-8586}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+      # OpenMetadata Server Authentication Configuration
+      AUTHORIZER_CLASS_NAME: ${AUTHORIZER_CLASS_NAME:-org.openmetadata.service.security.NoopAuthorizer}
+      AUTHORIZER_REQUEST_FILTER: ${AUTHORIZER_REQUEST_FILTER:-org.openmetadata.service.security.NoopFilter}
+      AUTHORIZER_ADMIN_PRINCIPALS: ${AUTHORIZER_ADMIN_PRINCIPALS:-[admin]}
+      AUTHORIZER_ALLOWED_REGISTRATION_DOMAIN: ${AUTHORIZER_ALLOWED_REGISTRATION_DOMAIN:-["all"]}
+      AUTHORIZER_INGESTION_PRINCIPALS: ${AUTHORIZER_INGESTION_PRINCIPALS:-[ingestion-bot]}
+      AUTHORIZER_PRINCIPAL_DOMAIN: ${AUTHORIZER_PRINCIPAL_DOMAIN:-"open-metadata.org"}
+      AUTHORIZER_ALLOWED_DOMAINS: ${AUTHORIZER_ALLOWED_DOMAINS:-[]}
+      AUTHORIZER_ENFORCE_PRINCIPAL_DOMAIN: ${AUTHORIZER_ENFORCE_PRINCIPAL_DOMAIN:-false}
+      AUTHORIZER_ENABLE_SECURE_SOCKET: ${AUTHORIZER_ENABLE_SECURE_SOCKET:-false}
+      AUTHENTICATION_PROVIDER: ${AUTHENTICATION_PROVIDER:-basic}
+      AUTHENTICATION_RESPONSE_TYPE: ${AUTHENTICATION_RESPONSE_TYPE:-id_token}
+      CUSTOM_OIDC_AUTHENTICATION_PROVIDER_NAME: ${CUSTOM_OIDC_AUTHENTICATION_PROVIDER_NAME:-""}
+      AUTHENTICATION_PUBLIC_KEYS: ${AUTHENTICATION_PUBLIC_KEYS:-[http://localhost:8585/api/v1/system/config/jwks]}
+      AUTHENTICATION_AUTHORITY: ${AUTHENTICATION_AUTHORITY:-https://accounts.google.com}
+      AUTHENTICATION_CLIENT_ID: ${AUTHENTICATION_CLIENT_ID:-""}
+      AUTHENTICATION_CALLBACK_URL: ${AUTHENTICATION_CALLBACK_URL:-""}
+      AUTHENTICATION_JWT_PRINCIPAL_CLAIMS: ${AUTHENTICATION_JWT_PRINCIPAL_CLAIMS:-[email,preferred_username,sub]}
+      AUTHENTICATION_JWT_PRINCIPAL_CLAIMS_MAPPING: ${AUTHENTICATION_JWT_PRINCIPAL_CLAIMS_MAPPING:-[]}
+      AUTHENTICATION_ENABLE_SELF_SIGNUP: ${AUTHENTICATION_ENABLE_SELF_SIGNUP:-true}
+      AUTHENTICATION_CLIENT_TYPE: ${AUTHENTICATION_CLIENT_TYPE:-public}
+      #For OIDC Authentication, when client is confidential
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-""}
+      OIDC_TYPE: ${OIDC_TYPE:-""} # google, azure etc.
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-""}
+      OIDC_SCOPE: ${OIDC_SCOPE:-"openid email profile"}
+      OIDC_DISCOVERY_URI: ${OIDC_DISCOVERY_URI:-""}
+      OIDC_USE_NONCE: ${OIDC_USE_NONCE:-true}
+      OIDC_PREFERRED_JWS: ${OIDC_PREFERRED_JWS:-"RS256"}
+      OIDC_RESPONSE_TYPE: ${OIDC_RESPONSE_TYPE:-"code"}
+      OIDC_DISABLE_PKCE: ${OIDC_DISABLE_PKCE:-true}
+      OIDC_CALLBACK: ${OIDC_CALLBACK:-"http://localhost:8585/callback"}
+      OIDC_SERVER_URL: ${OIDC_SERVER_URL:-"http://localhost:8585"}
+      OIDC_CLIENT_AUTH_METHOD: ${OIDC_CLIENT_AUTH_METHOD:-"client_secret_post"}
+      OIDC_TENANT: ${OIDC_TENANT:-""}
+      OIDC_MAX_CLOCK_SKEW: ${OIDC_MAX_CLOCK_SKEW:-""}
+      OIDC_CUSTOM_PARAMS: ${OIDC_CUSTOM_PARAMS:-{}}
+      OIDC_MAX_AGE: ${OIDC_MAX_AGE:-"0"}
+      OIDC_PROMPT_TYPE: ${OIDC_PROMPT_TYPE:-"consent"}
+      OIDC_SESSION_EXPIRY: ${OIDC_SESSION_EXPIRY:-"604800"}
+      # For SAML Authentication
+      # SAML_DEBUG_MODE: ${SAML_DEBUG_MODE:-false}
+      # SAML_IDP_ENTITY_ID: ${SAML_IDP_ENTITY_ID:-""}
+      # SAML_IDP_SSO_LOGIN_URL: ${SAML_IDP_SSO_LOGIN_URL:-""}
+      # SAML_IDP_CERTIFICATE: ${SAML_IDP_CERTIFICATE:-""}
+      # SAML_AUTHORITY_URL: ${SAML_AUTHORITY_URL:-"http://localhost:8585/api/v1/saml/login"}
+      # SAML_IDP_NAME_ID: ${SAML_IDP_NAME_ID:-"urn:oasis:names:tc:SAML:2.0:nameid-format:emailAddress"}
+      # SAML_SP_ENTITY_ID: ${SAML_SP_ENTITY_ID:-"http://localhost:8585/api/v1/saml/metadata"}
+      # SAML_SP_ACS: ${SAML_SP_ACS:-"http://localhost:8585/api/v1/saml/acs"}
+      # SAML_SP_CERTIFICATE: ${SAML_SP_CERTIFICATE:-""}
+      # SAML_SP_CALLBACK: ${SAML_SP_CALLBACK:-"http://localhost:8585/saml/callback"}
+      # SAML_STRICT_MODE: ${SAML_STRICT_MODE:-false}
+      # SAML_SP_TOKEN_VALIDITY: ${SAML_SP_TOKEN_VALIDITY:-"3600"}
+      # SAML_SEND_ENCRYPTED_NAME_ID: ${SAML_SEND_ENCRYPTED_NAME_ID:-false}
+      # SAML_SEND_SIGNED_AUTH_REQUEST: ${SAML_SEND_SIGNED_AUTH_REQUEST:-false}
+      # SAML_SIGNED_SP_METADATA: ${SAML_SIGNED_SP_METADATA:-false}
+      # SAML_WANT_MESSAGE_SIGNED: ${SAML_WANT_MESSAGE_SIGNED:-false}
+      # SAML_WANT_ASSERTION_SIGNED: ${SAML_WANT_ASSERTION_SIGNED:-false}
+      # SAML_WANT_ASSERTION_ENCRYPTED: ${SAML_WANT_ASSERTION_ENCRYPTED:-false}
+      # SAML_WANT_NAME_ID_ENCRYPTED: ${SAML_WANT_NAME_ID_ENCRYPTED:-false}
+      # SAML_KEYSTORE_FILE_PATH: ${SAML_KEYSTORE_FILE_PATH:-""}
+      # SAML_KEYSTORE_ALIAS: ${SAML_KEYSTORE_ALIAS:-""}
+      # SAML_KEYSTORE_PASSWORD: ${SAML_KEYSTORE_PASSWORD:-""}
+      # For LDAP Authentication
+      # AUTHENTICATION_LDAP_HOST: ${AUTHENTICATION_LDAP_HOST:-}
+      # AUTHENTICATION_LDAP_PORT: ${AUTHENTICATION_LDAP_PORT:-}
+      # AUTHENTICATION_LOOKUP_ADMIN_DN: ${AUTHENTICATION_LOOKUP_ADMIN_DN:-""}
+      # AUTHENTICATION_LOOKUP_ADMIN_PWD: ${AUTHENTICATION_LOOKUP_ADMIN_PWD:-""}
+      # AUTHENTICATION_USER_LOOKUP_BASEDN: ${AUTHENTICATION_USER_LOOKUP_BASEDN:-""}
+      # AUTHENTICATION_USER_MAIL_ATTR: ${AUTHENTICATION_USER_MAIL_ATTR:-}
+      # AUTHENTICATION_LDAP_POOL_SIZE: ${AUTHENTICATION_LDAP_POOL_SIZE:-3}
+      # AUTHENTICATION_LDAP_SSL_ENABLED: ${AUTHENTICATION_LDAP_SSL_ENABLED:-}
+      # AUTHENTICATION_LDAP_TRUSTSTORE_TYPE: ${AUTHENTICATION_LDAP_TRUSTSTORE_TYPE:-TrustAll}
+      # AUTHENTICATION_LDAP_TRUSTSTORE_PATH: ${AUTHENTICATION_LDAP_TRUSTSTORE_PATH:-}
+      # AUTHENTICATION_LDAP_KEYSTORE_PASSWORD: ${AUTHENTICATION_LDAP_KEYSTORE_PASSWORD:-}
+      # AUTHENTICATION_LDAP_SSL_KEY_FORMAT: ${AUTHENTICATION_LDAP_SSL_KEY_FORMAT:-}
+      # AUTHENTICATION_LDAP_ALLOW_WILDCARDS: ${AUTHENTICATION_LDAP_ALLOW_WILDCARDS:-}
+      # AUTHENTICATION_LDAP_ALLOWED_HOSTNAMES: ${AUTHENTICATION_LDAP_ALLOWED_HOSTNAMES:-[]}
+      # AUTHENTICATION_LDAP_SSL_VERIFY_CERT_HOST: ${AUTHENTICATION_LDAP_SSL_VERIFY_CERT_HOST:-}
+      # AUTHENTICATION_LDAP_EXAMINE_VALIDITY_DATES: ${AUTHENTICATION_LDAP_EXAMINE_VALIDITY_DATES:-true}
+
+      # JWT Configuration
+      RSA_PUBLIC_KEY_FILE_PATH: ${RSA_PUBLIC_KEY_FILE_PATH:-"./conf/public_key.der"}
+      RSA_PRIVATE_KEY_FILE_PATH: ${RSA_PRIVATE_KEY_FILE_PATH:-"./conf/private_key.der"}
+      JWT_ISSUER: ${JWT_ISSUER:-"open-metadata.org"}
+      JWT_KEY_ID: ${JWT_KEY_ID:-"Gb389a-9f76-gdjs-a92j-0242bk94356"}
+      # OpenMetadata Server Pipeline Service Client Configuration
+      PIPELINE_SERVICE_CLIENT_ENDPOINT: ${PIPELINE_SERVICE_CLIENT_ENDPOINT:-http://ingestion:8080}
+      PIPELINE_SERVICE_CLIENT_HEALTH_CHECK_INTERVAL: ${PIPELINE_SERVICE_CLIENT_HEALTH_CHECK_INTERVAL:-300}
+      SERVER_HOST_API_URL: ${SERVER_HOST_API_URL:-http://openmetadata-server:8585/api}
+      PIPELINE_SERVICE_CLIENT_VERIFY_SSL: ${PIPELINE_SERVICE_CLIENT_VERIFY_SSL:-"no-ssl"}
+      PIPELINE_SERVICE_CLIENT_SSL_CERT_PATH: ${PIPELINE_SERVICE_CLIENT_SSL_CERT_PATH:-""}
+      #Database configuration for postgresql
+      DB_DRIVER_CLASS: ${DB_DRIVER_CLASS:-org.postgresql.Driver}
+      DB_SCHEME: ${DB_SCHEME:-postgresql}
+      DB_PARAMS: ${DB_PARAMS:-allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC}
+      DB_USER: ${DB_USER:-openmetadata_user}
+      DB_USER_PASSWORD: ${DB_USER_PASSWORD:-openmetadata_password}
+      DB_HOST: ${DB_HOST:-postgresql}
+      DB_PORT: ${DB_PORT:-5432}
+      OM_DATABASE: ${OM_DATABASE:-openmetadata_db}
+      # ElasticSearch Configurations
+      ELASTICSEARCH_HOST: ${ELASTICSEARCH_HOST:- elasticsearch}
+      ELASTICSEARCH_PORT: ${ELASTICSEARCH_PORT:-9200}
+      ELASTICSEARCH_SCHEME: ${ELASTICSEARCH_SCHEME:-http}
+      ELASTICSEARCH_USER: ${ELASTICSEARCH_USER:-""}
+      ELASTICSEARCH_PASSWORD: ${ELASTICSEARCH_PASSWORD:-""}
+      SEARCH_TYPE: ${SEARCH_TYPE:- "elasticsearch"}
+      ELASTICSEARCH_TRUST_STORE_PATH: ${ELASTICSEARCH_TRUST_STORE_PATH:-""}
+      ELASTICSEARCH_TRUST_STORE_PASSWORD: ${ELASTICSEARCH_TRUST_STORE_PASSWORD:-""}
+      ELASTICSEARCH_CONNECTION_TIMEOUT_SECS: ${ELASTICSEARCH_CONNECTION_TIMEOUT_SECS:-5}
+      ELASTICSEARCH_SOCKET_TIMEOUT_SECS: ${ELASTICSEARCH_SOCKET_TIMEOUT_SECS:-60}
+      ELASTICSEARCH_KEEP_ALIVE_TIMEOUT_SECS: ${ELASTICSEARCH_KEEP_ALIVE_TIMEOUT_SECS:-600}
+      ELASTICSEARCH_BATCH_SIZE: ${ELASTICSEARCH_BATCH_SIZE:-100}
+      ELASTICSEARCH_PAYLOAD_BYTES_SIZE: ${ELASTICSEARCH_PAYLOAD_BYTES_SIZE:-10485760}   #max payLoadSize in Bytes
+      ELASTICSEARCH_INDEX_MAPPING_LANG: ${ELASTICSEARCH_INDEX_MAPPING_LANG:-EN}
+
+      #eventMonitoringConfiguration
+      EVENT_MONITOR: ${EVENT_MONITOR:-prometheus}
+      EVENT_MONITOR_BATCH_SIZE: ${EVENT_MONITOR_BATCH_SIZE:-10}
+      EVENT_MONITOR_PATH_PATTERN: ${EVENT_MONITOR_PATH_PATTERN:-["/api/v1/tables/*", "/api/v1/health-check"]}
+      EVENT_MONITOR_LATENCY: ${EVENT_MONITOR_LATENCY:-[]}
+
+      #pipelineServiceClientConfiguration
+      PIPELINE_SERVICE_CLIENT_ENABLED: ${PIPELINE_SERVICE_CLIENT_ENABLED:-true}
+      PIPELINE_SERVICE_CLIENT_CLASS_NAME: ${PIPELINE_SERVICE_CLIENT_CLASS_NAME:-"org.openmetadata.service.clients.pipeline.airflow.AirflowRESTClient"}
+      PIPELINE_SERVICE_IP_INFO_ENABLED: ${PIPELINE_SERVICE_IP_INFO_ENABLED:-false}
+      PIPELINE_SERVICE_CLIENT_HOST_IP: ${PIPELINE_SERVICE_CLIENT_HOST_IP:-""}
+      PIPELINE_SERVICE_CLIENT_SECRETS_MANAGER_LOADER: ${PIPELINE_SERVICE_CLIENT_SECRETS_MANAGER_LOADER:-"noop"}
+      #airflow parameters
+      AIRFLOW_USERNAME: ${AIRFLOW_USERNAME:-admin}
+      AIRFLOW_PASSWORD: ${AIRFLOW_PASSWORD:-admin}
+      AIRFLOW_TIMEOUT: ${AIRFLOW_TIMEOUT:-10}
+      AIRFLOW_TRUST_STORE_PATH: ${AIRFLOW_TRUST_STORE_PATH:-""}
+      AIRFLOW_TRUST_STORE_PASSWORD: ${AIRFLOW_TRUST_STORE_PASSWORD:-""}
+      FERNET_KEY: ${FERNET_KEY:-jJ/9sz0g0OHxsfxOoSfdFdmk3ysNmPRnH3TUAbz3IHA=}
+
+      #secretsManagerConfiguration
+      SECRET_MANAGER: ${SECRET_MANAGER:-db}
+      #parameters:
+      OM_SM_REGION: ${OM_SM_REGION:-""}
+      OM_SM_ACCESS_KEY_ID: ${OM_SM_ACCESS_KEY_ID:-""}
+      OM_SM_ACCESS_KEY: ${OM_SM_ACCESS_KEY:-""}
+
+      #email configuration:
+      OM_EMAIL_ENTITY: ${OM_EMAIL_ENTITY:-"OpenMetadata"}
+      OM_SUPPORT_URL: ${OM_SUPPORT_URL:-"https://slack.open-metadata.org"}
+      AUTHORIZER_ENABLE_SMTP : ${AUTHORIZER_ENABLE_SMTP:-false}
+      OPENMETADATA_SERVER_URL: ${OPENMETADATA_SERVER_URL:-""}
+      OPENMETADATA_SMTP_SENDER_MAIL: ${OPENMETADATA_SMTP_SENDER_MAIL:-""}
+      SMTP_SERVER_ENDPOINT: ${SMTP_SERVER_ENDPOINT:-""}
+      SMTP_SERVER_PORT: ${SMTP_SERVER_PORT:-""}
+      SMTP_SERVER_USERNAME: ${SMTP_SERVER_USERNAME:-""}
+      SMTP_SERVER_PWD: ${SMTP_SERVER_PWD:-""}
+      SMTP_SERVER_STRATEGY: ${SMTP_SERVER_STRATEGY:-"SMTP_TLS"}
+
+      # Heap OPTS Configurations
+      OPENMETADATA_HEAP_OPTS: ${OPENMETADATA_HEAP_OPTS:--Xmx1G -Xms1G}
+      # Mask passwords values in UI
+      MASK_PASSWORDS_API: ${MASK_PASSWORDS_API:-false}
+
+      #OpenMetadata Web Configuration
+      WEB_CONF_URI_PATH: ${WEB_CONF_URI_PATH:-"/api"}
+      #HSTS
+      WEB_CONF_HSTS_ENABLED: ${WEB_CONF_HSTS_ENABLED:-false}
+      WEB_CONF_HSTS_MAX_AGE: ${WEB_CONF_HSTS_MAX_AGE:-"365 days"}
+      WEB_CONF_HSTS_INCLUDE_SUBDOMAINS: ${WEB_CONF_HSTS_INCLUDE_SUBDOMAINS:-"true"}
+      WEB_CONF_HSTS_PRELOAD: ${WEB_CONF_HSTS_PRELOAD:-"true"}
+      #Frame Options
+      WEB_CONF_FRAME_OPTION_ENABLED: ${WEB_CONF_FRAME_OPTION_ENABLED:-false}
+      WEB_CONF_FRAME_OPTION: ${WEB_CONF_FRAME_OPTION:-"SAMEORIGIN"}
+      WEB_CONF_FRAME_ORIGIN: ${WEB_CONF_FRAME_ORIGIN:-""}
+      #Content Type
+      WEB_CONF_CONTENT_TYPE_OPTIONS_ENABLED: ${WEB_CONF_CONTENT_TYPE_OPTIONS_ENABLED:-false}
+      #XSS-Protection
+      WEB_CONF_XSS_PROTECTION_ENABLED: ${WEB_CONF_XSS_PROTECTION_ENABLED:-false}
+      WEB_CONF_XSS_PROTECTION_ON: ${WEB_CONF_XSS_PROTECTION_ON:-true}
+      WEB_CONF_XSS_PROTECTION_BLOCK: ${WEB_CONF_XSS_PROTECTION_BLOCK:-true}
+      #CSP
+      WEB_CONF_XSS_CSP_ENABLED: ${WEB_CONF_XSS_CSP_ENABLED:-false}
+      WEB_CONF_XSS_CSP_POLICY: ${WEB_CONF_XSS_CSP_POLICY:-"default-src 'self'"}
+      WEB_CONF_XSS_CSP_REPORT_ONLY_POLICY: ${WEB_CONF_XSS_CSP_REPORT_ONLY_POLICY:-""}
+      #Cache
+      WEB_CONF_CACHE_CONTROL: ${WEB_CONF_CACHE_CONTROL:-""}
+      WEB_CONF_PRAGMA: ${WEB_CONF_PRAGMA:-""}
+    expose:
+      - 8585
+      - 8586
+    ports:
+      - "8585:8585"
+      - "8586:8586"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      postgresql:
+        condition: service_healthy
+      execute-migrate-all:
+        condition: service_completed_successfully
+    networks:
+      - vda
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "--spider",  "http://localhost:8586/healthcheck" ]
+
+  ingestion:
+    container_name: openmetadata_ingestion
+    image: docker.getcollate.io/openmetadata/ingestion:1.11.4
+    restart: unless-stopped
+    depends_on:
+      elasticsearch:
+        condition: service_started
+      postgresql:
+        condition: service_healthy
+      openmetadata-server:
+        condition: service_started
+    environment:
+      AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session"
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__OPENMETADATA_AIRFLOW_APIS__DAG_GENERATED_CONFIGS: "/opt/airflow/dag_generated_configs"
+      DB_HOST: ${AIRFLOW_DB_HOST:-postgresql}
+      DB_PORT: ${AIRFLOW_DB_PORT:-5432}
+      AIRFLOW_DB: ${AIRFLOW_DB:-airflow_db}
+      DB_USER: ${AIRFLOW_DB_USER:-airflow_user}
+      DB_SCHEME: ${AIRFLOW_DB_SCHEME:-postgresql+psycopg2}
+      DB_PASSWORD: ${AIRFLOW_DB_PASSWORD:-airflow_pass}
+      # extra connection-string properties for the database
+      # EXAMPLE
+      # require SSL (only for Postgres)
+      # properties: "?sslmode=require"
+      DB_PROPERTIES: ${AIRFLOW_DB_PROPERTIES:-}
+      # To test the lineage backend
+      # AIRFLOW__LINEAGE__BACKEND: airflow_provider_openmetadata.lineage.backend.OpenMetadataLineageBackend
+      # AIRFLOW__LINEAGE__AIRFLOW_SERVICE_NAME: local_airflow
+      # AIRFLOW__LINEAGE__OPENMETADATA_API_ENDPOINT: http://openmetadata-server:8585/api
+      # AIRFLOW__LINEAGE__JWT_TOKEN: ...
+    entrypoint: /bin/bash
+    command:
+      - "/opt/airflow/ingestion_dependency.sh"
+    expose:
+      - 8080
+    ports:
+      - "8085:8080"
+    networks:
+      - vda
+    volumes:
+      - ingestion-volume-dag-airflow:/opt/airflow/dag_generated_configs
+      - ingestion-volume-dags:/opt/airflow/dags
+      - ingestion-volume-tmp:/tmp
+  surrealdb:
+    image: surrealdb/surrealdb:latest
+    container_name: lineage_surrealdb
+    restart: unless-stopped
+    user: root
+    ports:
+      - "8809:8000"
+    command: start --user root --pass secret  rocksdb:/data/database.db
+    networks:
+      - vda
+    volumes:
+      - surreal_data:/data
+
+  marquez:
+    image: marquezproject/marquez:latest
+    container_name: marquez
+    #restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      MARQUEZ_CONFIG: /config/marquez.yaml
+    volumes:
+      - ./marquez.yaml:/config/marquez.yaml
+    #   - /home/rohan/projects/llm-lineage/marquez.yaml:/config/marquez.yaml
+    networks:
+      - vda
+
+  marquez-web:
+    image: marquezproject/marquez-web:latest
+    restart: unless-stopped
+    depends_on:
+      - marquez
+    ports:
+      - "3000:3000"
+    environment:
+      - MARQUEZ_HOST=marquez
+      - MARQUEZ_PORT=5000
+      - WEB_PORT=3000
+    networks:
+      - vda
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_storage:/qdrant/storage:z
+    networks:
+      - vda
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "timeout 1s bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 
+  temporal:
+    container_name: temporal
+    restart: unless-stopped
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PWD=password
+      - POSTGRES_SEEDS=postgresql
+      # - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CLI_ADDRESS=temporal:7233
+    image: temporalio/auto-setup
+    networks:
+      - vda
+    ports:
+      - 7233:7233
+    # volumes:
+    #   - ./dynamicconfig:/etc/temporal/config/dynamicconfig
+
+  temporal-admin-tools:
+    container_name: temporal-admin-tools
+    restart: unless-stopped
+    depends_on:
+      - temporal
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CLI_ADDRESS=temporal:7233
+    image: temporalio/admin-tools
+    networks:
+      - vda
+    stdin_open: true
+    tty: true
+
+  temporal-ui:
+    container_name: temporal-ui
+    restart: unless-stopped
+    depends_on:
+      - temporal
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+    image: temporalio/ui
+    networks:
+      - vda
+    ports:
+      - 8480:8080
+
+  cdm-ingestion:
+    image: ${IMAGE_REGISTRY}/vda-metadata:${GIT_SHA}
+    container_name: cdm_ingestion
+    restart: no
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    command: ["python", "scripts/ingest_cdm_qdrant.py"]
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+    volumes:
+    - ./cdm_complete_metadata.jsonl:/app/cdm_complete_metadata.jsonl:ro
+    networks:
+      - vda
+
+
+  metadata-worker:
+    image: ${IMAGE_REGISTRY}/vda-metadata:${GIT_SHA}
+    container_name: metadata_worker
+    restart: unless-stopped
+    depends_on:
+      surrealdb:
+        condition: service_started
+      qdrant:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+      openmetadata-server:
+        condition: service_healthy
+    command: ["python", "-m", "src.temporal.worker"]
+    environment:
+      - SURREAL_WSS_URL=ws://surrealdb:8000/rpc
+      - SURREAL_NS=test
+      - SURREAL_DB=lineage
+      - SURREAL_USER=root
+      - SURREAL_PASS=secret
+      - QDRANT_URL=http://qdrant:6333
+      - TEMPORAL_HOST=temporal:7233
+      - POSTGRES_HOST=postgresql
+      - POSTGRES_USER=postgres
+      - POSTGRES_PWD=password
+      - POSTGRES_PORT=5432
+      - MARQUEZ_URL=http://marquez:5000
+      - SUPERSET_URL=http://superset:8088
+      - OM_HOST=http://openmetadata-server:8585/api
+    networks:
+      - vda
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.6.0
+    hostname: schema-registry
+    container_name: schema-registry
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:9092
+    extra_hosts:
+      - "fedora-ts:100.120.137.19"
+    networks:
+      - vda
+  kafka:
+    image: apache/kafka:latest
+    container_name: kafka
+    restart: unless-stopped
+    ports:
+      - '9092:9092'
+      - "9096:9096"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:29093'
+      KAFKA_LISTENERS: 'PLAINTEXT://:9092,CONTROLLER://:29093,PLAINTEXT_TS://:9096'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:9092,PLAINTEXT_TS://52.136.118.157:9096'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_TS:PLAINTEXT'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_LOG_DIRS: '/tmp/kraft-combined-logs'
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - vda
+
+  openlineage-consumer:
+    image: vdaregistry.azurecr.io/vda-metadata:${GIT_SHA}
+    container_name: openlineage_consumer
+    restart: unless-stopped
+    depends_on:
+      surrealdb:
+        condition: service_started
+      qdrant:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+    command: ["python", "-m", "src.services.ol_consumer"]
+    environment:
+      - SURREAL_WSS_URL=ws://surrealdb:8000/rpc
+      - SURREAL_NS=test
+      - SURREAL_DB=lineage
+      - SURREAL_USER=root
+      - SURREAL_PASS=secret
+      - QDRANT_URL=http://qdrant:6333
+      - TEMPORAL_HOST=temporal:7233
+      - POSTGRES_HOST=postgresql
+      - POSTGRES_USER=postgres
+      - POSTGRES_PWD=password
+      - POSTGRES_PORT=5432
+      - MARQUEZ_URL=http://marquez:5000
+      - SUPERSET_URL=http://superset:8088
+      - OM_HOST=http://openmetadata-server:8585/api
+      - KAFKA_BROKERS=kafka:9092
+      - KAFKA_TOPIC=openlineage_events
+    networks:
+      - vda
 
 networks:
   vda:
 
-volumes:
-  es_data:
-  neo4j_data:
-  superset_home:
-    external: false
-  db_home:
-    external: false
-  redis:
-    external: false
+
+
