@@ -19,12 +19,14 @@ volumes:
   db_home:
     external: false
   redis:
-    external: false/
+    external: false
   surreal_data:
   qdrant_storage:
   marquez_pg_data:
   kafka_data:
-
+  ingestion-volume-dag-airflow:
+  ingestion-volume-dags:
+  ingestion-volume-tmp:
 services:
   postgresql:
     container_name: openmetadata_postgresql
@@ -152,7 +154,7 @@ services:
         test: "curl -s http://localhost:9200/_cluster/health?pretty | grep status | grep -qE 'green|yellow' || exit 1"
   
   keycloak:
-    image: ${IMAGE_REGISTRY}/keycloak:local
+    image: microuidigital/keycloak:local
     restart: unless-stopped
     env_file: vda/.env-vda
     environment:
@@ -164,7 +166,7 @@ services:
       - vda
 
   nginx:
-    image: ${IMAGE_REGISTRY}/nginx:latest
+    image: microuidigital/nginx:latest
     restart: unless-stopped
     ports:
       - "80:80"
@@ -308,7 +310,7 @@ services:
     networks:
       - vda
   git-control-app:
-    image: ${IMAGE_REGISTRY}/vda-gitcontrolapp:latest
+    image: microuidigital/vda-gitcontrolapp:latest
     restart: unless-stopped
     env_file: vda/.env-vda
     environment:
@@ -960,7 +962,7 @@ services:
       - "8081:8081"
     environment:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
-      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_LISTENERS: http://1.0.0.0:8081
       SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:9092
     extra_hosts:
       - "fedora-ts:100.120.137.19"
@@ -993,7 +995,7 @@ services:
       - vda
 
   openlineage-consumer:
-    image: vdaregistry.azurecr.io/vda-metadata:${GIT_SHA}
+    image: ${IMAGE_REGISTRY}/vda-metadata:${GIT_SHA}
     container_name: openlineage_consumer
     restart: unless-stopped
     depends_on:
