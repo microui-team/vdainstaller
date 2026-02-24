@@ -1,2 +1,2 @@
 #!/bin/bash
-docker compose -f vda-deploy.yaml  --env-file vda/.env-vda up -d
+sudo docker compose -f vda-deploy.yaml  --env-file vda/.env-vda up -d

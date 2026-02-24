@@ -154,7 +154,7 @@ services:
         test: "curl -s http://localhost:9200/_cluster/health?pretty | grep status | grep -qE 'green|yellow' || exit 1"
   
   keycloak:
-    image: microuidigital/keycloak:local
+    image: local-keycloak
     restart: unless-stopped
     env_file: vda/.env-vda
     environment:
