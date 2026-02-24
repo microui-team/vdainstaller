@@ -292,6 +292,8 @@ services:
     ports:
       - "8007:8000"
     command: ["python", "-m", "src.main"]
+    volumes:
+      - ./cdm_complete_metadata.jsonl:/app/cdm_complete_metadata.jsonl
     environment:
       - SURREAL_WSS_URL=ws://surrealdb:8000/rpc
       - SURREAL_NS=test
