@@ -239,20 +239,20 @@ services:
       - keycloak
 
 
-  api-superset:
-    image: asia-south1-docker.pkg.dev/izac-349007/ssm-tool/superset-app:2.1.0_custom_latest
-    restart: unless-stopped
-    env_file: vda/.env-vda
-    environment:
-      - SUPERSET_URL=${ORIG_SUPERSET_URL}
-      - SUPERSET_USER=${SUPERSET_USER}
-      - SUPERSET_PASSWORD=${SUPERSET_PASSWORD}
-      - ELASTICSEARCH_URL=http://es_amundsen:9200
-      - PORT=8082
-    #ports:
-    #  - "8082:8082"
-    networks:
-      - vda
+  # api-superset:
+  #   image: asia-south1-docker.pkg.dev/izac-349007/ssm-tool/superset-app:2.1.0_custom_latest
+  #   restart: unless-stopped
+  #   env_file: vda/.env-vda
+  #   environment:
+  #     - SUPERSET_URL=${ORIG_SUPERSET_URL}
+  #     - SUPERSET_USER=${SUPERSET_USER}
+  #     - SUPERSET_PASSWORD=${SUPERSET_PASSWORD}
+  #     - ELASTICSEARCH_URL=http://es_amundsen:9200
+  #     - PORT=8082
+  #   #ports:
+  #   #  - "8082:8082"
+  #   networks:
+  #     - vda
 
   
 
