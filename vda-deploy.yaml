@@ -30,7 +30,7 @@ volumes:
 services:
   postgresql:
     container_name: openmetadata_postgresql
-    image: docker.getcollate.io/openmetadata/postgresql:1.12.1
+    image: asia-south1-docker.pkg.dev/izac-349007/reports/docker.getcollate.io/openmetadata/postgresql:1.12.1
     restart: unless-stopped
     command: "--work_mem=10MB --max_connections=300"
     environment:
@@ -124,7 +124,7 @@ services:
       - vda
 
   elasticsearch:
-      image: docker.elastic.co/elasticsearch/elasticsearch:9.3.0
+      image: asia-south1-docker.pkg.dev/izac-349007/reports/docker.elastic.co/elasticsearch/elasticsearch:9.3.0
       container_name: openmetadata_elasticsearch
       restart: unless-stopped
       #ports:
@@ -325,7 +325,7 @@ services:
       - vda
   execute-migrate-all:
     container_name: execute_migrate_all
-    image: docker.getcollate.io/openmetadata/server:1.12.1
+    image: asia-south1-docker.pkg.dev/izac-349007/reports/docker.getcollate.io/openmetadata/server:1.12.1
     command: "./bootstrap/openmetadata-ops.sh migrate"
     environment:
       OPENMETADATA_CLUSTER_NAME: ${OPENMETADATA_CLUSTER_NAME:-openmetadata}
@@ -543,7 +543,7 @@ services:
   openmetadata-server:
     container_name: openmetadata_server
     restart: unless-stopped
-    image: docker.getcollate.io/openmetadata/server:1.12.1
+    image: asia-south1-docker.pkg.dev/izac-349007/reports/docker.getcollate.io/openmetadata/server:1.12.1
     environment:
       OPENMETADATA_CLUSTER_NAME: ${OPENMETADATA_CLUSTER_NAME:-openmetadata}
       SERVER_PORT: ${SERVER_PORT:-8585}
