@@ -9,7 +9,7 @@ x-superset-volumes: &superset-volumes
   - ./vda:/app/docker
   - superset_home:/app/superset_home
 
-version: '3'
+#version: '3'
 
 volumes:
   es_data:
