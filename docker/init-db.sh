@@ -52,4 +52,6 @@ create_db_and_user "keycloak" "keycloak" "keycloak_password"
 # 5. Temporal
 create_db_and_user "temporal" "temporal" "temporal_password"
 
+create_db_and_user "vda" "vda" "vda_password"
+
 echo "✅ All requested databases and users have been created."
