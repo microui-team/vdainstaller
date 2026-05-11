@@ -308,7 +308,7 @@ services:
       - POSTGRES_HOST=postgresql
       - POSTGRES_USER=vda
       - POSTGRES_DB=vda
-      - POSTGRES_PWD=password
+      - POSTGRES_PWD=vda_password
 
     networks:
       - vda
@@ -955,7 +955,7 @@ services:
       - POSTGRES_HOST=postgresql
       - POSTGRES_USER=vda
       - POSTGRES_DB=vda
-      - POSTGRES_PWD=password
+      - POSTGRES_PWD=vda_password
       - POSTGRES_PORT=5432
       - MARQUEZ_URL=http://marquez:5000
       - SUPERSET_URL=http://superset:8088
@@ -1026,7 +1026,7 @@ services:
       - POSTGRES_HOST=postgresql
       - POSTGRES_USER=vda
       - POSTGRES_DB=vda
-      - POSTGRES_PWD=password
+      - POSTGRES_PWD=vda_password
       - POSTGRES_PORT=5432
       - MARQUEZ_URL=http://marquez:5000
       - SUPERSET_URL=http://superset:8088
