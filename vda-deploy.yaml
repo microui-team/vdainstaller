@@ -68,60 +68,60 @@ services:
   #   networks:
   #     - vda
 
-  superset:
-    env_file: vda/.env-non-dev
-    image: asia-south1-docker.pkg.dev/izac-349007/ssm-tool/superset-app:2.1.0_custom_latest
-    container_name: superset_app
-    command: ["/app/docker/docker-bootstrap.sh", "app-gunicorn"]
-    user: "root"
-    restart: unless-stopped
-    ports:
-      - 8088:8088
-    depends_on: *superset-depends-on
-    volumes: *superset-volumes
-    networks:
-      - vda
+  # superset:
+  #   env_file: vda/.env-non-dev
+  #   image: asia-south1-docker.pkg.dev/izac-349007/ssm-tool/superset-app:2.1.0_custom_latest
+  #   container_name: superset_app
+  #   command: ["/app/docker/docker-bootstrap.sh", "app-gunicorn"]
+  #   user: "root"
+  #   restart: unless-stopped
+  #   ports:
+  #     - 8088:8088
+  #   depends_on: *superset-depends-on
+  #   volumes: *superset-volumes
+  #   networks:
+  #     - vda
 
-  superset-init:
-    image: asia-south1-docker.pkg.dev/izac-349007/ssm-tool/superset-app:2.1.0_custom_latest
-    container_name: superset_init
-    command: ["/app/docker/docker-init.sh"]
-    env_file: vda/.env-non-dev
-    depends_on: *superset-depends-on
-    user: "root"
-    volumes: *superset-volumes
-    healthcheck:
-      disable: true
-    networks:
-      - vda
+  # superset-init:
+  #   image: asia-south1-docker.pkg.dev/izac-349007/ssm-tool/superset-app:2.1.0_custom_latest
+  #   container_name: superset_init
+  #   command: ["/app/docker/docker-init.sh"]
+  #   env_file: vda/.env-non-dev
+  #   depends_on: *superset-depends-on
+  #   user: "root"
+  #   volumes: *superset-volumes
+  #   healthcheck:
+  #     disable: true
+  #   networks:
+  #     - vda
 
-  superset-worker:
-    image: asia-south1-docker.pkg.dev/izac-349007/ssm-tool/superset-app:2.1.0_custom_latest
-    container_name: superset_worker
-    command: ["/app/docker/docker-bootstrap.sh", "worker"]
-    env_file: vda/.env-non-dev
-    restart: unless-stopped
-    depends_on: *superset-depends-on
-    user: "root"
-    volumes: *superset-volumes
-    healthcheck:
-      test: ["CMD-SHELL", "celery -A superset.tasks.celery_app:app inspect ping -d celery@$$HOSTNAME"]
-    networks:
-      - vda
+  # superset-worker:
+  #   image: asia-south1-docker.pkg.dev/izac-349007/ssm-tool/superset-app:2.1.0_custom_latest
+  #   container_name: superset_worker
+  #   command: ["/app/docker/docker-bootstrap.sh", "worker"]
+  #   env_file: vda/.env-non-dev
+  #   restart: unless-stopped
+  #   depends_on: *superset-depends-on
+  #   user: "root"
+  #   volumes: *superset-volumes
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "celery -A superset.tasks.celery_app:app inspect ping -d celery@$$HOSTNAME"]
+  #   networks:
+  #     - vda
 
-  superset-worker-beat:
-    image: asia-south1-docker.pkg.dev/izac-349007/ssm-tool/superset-app:2.1.0_custom_latest
-    container_name: superset_worker_beat
-    command: ["/app/docker/docker-bootstrap.sh", "beat"]
-    env_file: vda/.env-non-dev
-    restart: unless-stopped
-    depends_on: *superset-depends-on
-    user: "root"
-    volumes: *superset-volumes
-    healthcheck:
-      disable: true
-    networks:
-      - vda
+  # superset-worker-beat:
+  #   image: asia-south1-docker.pkg.dev/izac-349007/ssm-tool/superset-app:2.1.0_custom_latest
+  #   container_name: superset_worker_beat
+  #   command: ["/app/docker/docker-bootstrap.sh", "beat"]
+  #   env_file: vda/.env-non-dev
+  #   restart: unless-stopped
+  #   depends_on: *superset-depends-on
+  #   user: "root"
+  #   volumes: *superset-volumes
+  #   healthcheck:
+  #     disable: true
+  #   networks:
+  #     - vda
 
   elasticsearch:
       image: asia-south1-docker.pkg.dev/izac-349007/reports/docker.elastic.co/elasticsearch/elasticsearch:9.3.0
