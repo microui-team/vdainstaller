@@ -755,7 +755,7 @@ services:
 
   ingestion:
     container_name: openmetadata_ingestion
-    image: docker.getcollate.io/openmetadata/ingestion:1.12.1
+    image: asia-south1-docker.pkg.dev/izac-349007/reports/docker.getcollate.io/openmetadata/ingestion:1.12.1
     restart: unless-stopped
     depends_on:
       elasticsearch:
