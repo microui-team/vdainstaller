@@ -237,7 +237,6 @@ services:
     depends_on:
       - postgresql
       - keycloak
-      - api-llmapi
 
 
   api-superset:
@@ -256,23 +255,6 @@ services:
       - vda
 
   
-  api-llmapi:
-    image: ${IMAGE_REGISTRY}/vda-llmapi:${GIT_SHA}
-    restart: unless-stopped
-    env_file: vda/.env-vda
-    environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - HUGGINGFACEHUB_API_TOKEN=${HUGGINGFACEHUB_API_TOKEN}
-      - AWS_S3_BUCKET_NAME=${AWS_S3_BUCKET_NAME}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - ELASTICSEARCH_URL=http://es_amundsen:9200
-    #ports:
-    #  - "8081:8081"
-    volumes:
-      - ./uploads:/uploads    
-    networks:
-      - vda
 
   metadata-api:
     image: prohankumar/metadata:2
