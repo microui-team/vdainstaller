@@ -70,7 +70,7 @@ services:
 
   superset:
     env_file: vda/.env-non-dev
-    image: *superset-image
+    image: asia-south1-docker.pkg.dev/izac-349007/ssm-tool/superset-app:2.1.0_custom_latest
     container_name: superset_app
     command: ["/app/docker/docker-bootstrap.sh", "app-gunicorn"]
     user: "root"
@@ -83,7 +83,7 @@ services:
       - vda
 
   superset-init:
-    image: *superset-image
+    image: asia-south1-docker.pkg.dev/izac-349007/ssm-tool/superset-app:2.1.0_custom_latest
     container_name: superset_init
     command: ["/app/docker/docker-init.sh"]
     env_file: vda/.env-non-dev
@@ -96,7 +96,7 @@ services:
       - vda
 
   superset-worker:
-    image: *superset-image
+    image: asia-south1-docker.pkg.dev/izac-349007/ssm-tool/superset-app:2.1.0_custom_latest
     container_name: superset_worker
     command: ["/app/docker/docker-bootstrap.sh", "worker"]
     env_file: vda/.env-non-dev
@@ -110,7 +110,7 @@ services:
       - vda
 
   superset-worker-beat:
-    image: *superset-image
+    image: asia-south1-docker.pkg.dev/izac-349007/ssm-tool/superset-app:2.1.0_custom_latest
     container_name: superset_worker_beat
     command: ["/app/docker/docker-bootstrap.sh", "beat"]
     env_file: vda/.env-non-dev
@@ -240,7 +240,7 @@ services:
 
 
   api-superset:
-    image: ${IMAGE_REGISTRY}/vda-superset:${GIT_SHA}
+    image: asia-south1-docker.pkg.dev/izac-349007/ssm-tool/superset-app:2.1.0_custom_latest
     restart: unless-stopped
     env_file: vda/.env-vda
     environment:
