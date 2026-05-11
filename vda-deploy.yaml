@@ -154,7 +154,7 @@ services:
         test: "curl -s http://localhost:9200/_cluster/health?pretty | grep status | grep -qE 'green|yellow' || exit 1"
   
   keycloak:
-    image: local-keycloak
+    image: asia-south1-docker.pkg.dev/izac-349007/ssm-tool/keycloak:21.1.1-local
     restart: unless-stopped
     env_file: vda/.env-vda
     environment:
