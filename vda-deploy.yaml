@@ -944,6 +944,40 @@ services:
       - OM_HOST=http://openmetadata-server:8585/api
     networks:
       - vda
+
+  metadata-worker-bg:
+    image: prohankumar/metadata:2
+    container_name: metadata_worker_bg
+    restart: unless-stopped
+    depends_on:
+      surrealdb:
+        condition: service_started
+      qdrant:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+      openmetadata-server:
+        condition: service_healthy
+    command: ["python", "-m", "src.temporal.worker", "--background"]
+    environment:
+      - SURREAL_WSS_URL=ws://surrealdb:8000/rpc
+      - SURREAL_NS=test
+      - SURREAL_DB=lineage
+      - SURREAL_USER=root
+      - SURREAL_PASS=secret
+      - QDRANT_URL=http://qdrant:6333
+      - TEMPORAL_HOST=temporal:7233
+      - POSTGRES_HOST=postgresql
+      - POSTGRES_USER=vda
+      - POSTGRES_DB=vda
+      - POSTGRES_PWD=vda_password
+      - POSTGRES_PORT=5432
+      - MARQUEZ_URL=http://marquez:5000
+      - SUPERSET_URL=http://superset:8088
+      - OM_HOST=http://openmetadata-server:8585/api
+    networks:
+      - vda
+      
   schema-registry:
     image: confluentinc/cp-schema-registry:7.6.0
     hostname: schema-registry
@@ -1017,6 +1051,8 @@ services:
       - KAFKA_TOPIC=openlineage_events
     networks:
       - vda
+
+
 
 networks:
   vda:
