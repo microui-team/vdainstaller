@@ -291,6 +291,9 @@ services:
       - POSTGRES_USER=vda
       - POSTGRES_DB=vda
       - POSTGRES_PWD=vda_password
+      - LLM_BASE_URL=http://ollama:11434/v1
+      - EMBEDDINGS_BASE_URL=http://ollama:11434/v1
+      - LLM_MODEL=qwen2.5-coder:14b
 
     networks:
       - vda
@@ -1051,8 +1054,329 @@ services:
       - KAFKA_TOPIC=openlineage_events
     networks:
       - vda
+  redis-di:
+    image: redis:7.4.0
+    container_name: redis-di
+    ports:
+      - "6379:6379"
+    volumes:
+      - ${REDIS_DATA_DIR}:/data
+    restart: unless-stopped
 
+  dia-server:
+    image: asia-south1-docker.pkg.dev/izac-349007/reports/dia-server
+    container_name: dia-server
+    ports:
+      - "${DIA_SERVER_PORT}:30000"
+    volumes:
+      - ${AIRFLOW_DAGS_DIR}:/airflow/dags
+      - ${BASE_CODE_DIR}/python-apps/data-ingestion-agent:${BASE_CODE_DIR}/python-apps/data-ingestion-agent
+    environment:
+      - AIRFLOW_HOME=${AIRFLOW_HOME}
+      - AIRFLOW_WEBSERVER_URL=${AIRFLOW_WEBSERVER_URL}
+      - AIRFLOW_ADMIN_USER=${AIRFLOW_ADMIN_USER}
+      - AIRFLOW_ADMIN_PASSWORD=${AIRFLOW_ADMIN_PASSWORD}
+      - SPARK_MASTER=${SPARK_MASTER}
+      - HADOOP_FS=${HADOOP_FS}
+      - HIVE_HOST=${HIVE_HOST}
+      - HIVE_PORT=${HIVE_PORT}
+      - spark_hive_metastore_uris=${SPARK_HIVE_METASTORE_URIS}
+      - spark_hadoop_fs_defaultFS=${SPARK_HADOOP_FS_DEFAULT_FS}
+    restart: unless-stopped
 
+  di-server:
+    image: asia-south1-docker.pkg.dev/izac-349007/reports/di-server
+    container_name: di-server
+    ports:
+      - "${DI_SERVER_PORT}:8083"
+    depends_on:
+      - redis-di
+      - dia-server
+    volumes:
+      - ${BASE_CODE_DIR}/python-apps/data-ingestion:${BASE_CODE_DIR}/python-apps/data-ingestion
+    environment:
+      - NB_UTILITIES_PATH_PREFIX=${NB_UTILITIES_PATH_PREFIX}
+      - NB_OUTPUTS_PATH_PREFIX=${NB_OUTPUTS_PATH_PREFIX}
+      - DATA_INGESTION_CONFIGS_PATH=${DATA_INGESTION_CONFIGS_PATH}
+      - MAPRDB_TABLE_PATH=${MAPRDB_TABLE_PATH}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - SPARK_APP_SERVER=${SPARK_APP_SERVER}
+      - DLT_INGESTION_SERVER=${DLT_INGESTION_SERVER}
+    restart: unless-stopped
+
+  kafka-connect:
+    image: asia-south1-docker.pkg.dev/izac-349007/reports/kc
+    container_name: kafka-connect
+    ports:
+      - "8083:8083"
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: 'kafka:9092'
+      CONNECT_REST_ADVERTISED_HOST_NAME: connect
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: compose-connect-group
+      CONNECT_CONFIG_STORAGE_TOPIC: docker-connect-configs
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_FLUSH_INTERVAL_MS: 10000
+      CONNECT_OFFSET_STORAGE_TOPIC: docker-connect-offsets
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_TOPIC: docker-connect-status
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_KEY_CONVERTER: io.confluent.connect.avro.AvroConverter
+      CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8781
+      CONNECT_VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8781
+      CONNECT_PLUGIN_PATH: "/usr/share/java,/usr/share/confluent-hub-components,/usr/share/kafka/plugins"
+    networks:
+      - vda
+  
+  ollama:
+    image: asia-south1-docker.pkg.dev/izac-349007/reports/local-model:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    restart: unless-stopped
+    networks:
+      - vda
+  
+  jupyter:
+    image: asia-south1-docker.pkg.dev/izac-349007/reports/pyspark-notebook
+    depends_on:
+      lakekeeper:
+        condition: service_healthy
+      initialwarehouse:
+        condition: service_completed_successfully
+      trino:
+        condition: service_healthy
+      starrocks:
+        condition: service_healthy
+    command: start-notebook.sh --NotebookApp.token=''
+    volumes:
+      - ./notebooks:/home/jovyan/examples/
+    networks:
+      vda:
+    ports:
+      - "8888:8888"
+
+  lakekeeper:
+    image: asia-south1-docker.pkg.dev/izac-349007/reports/lakekeeper
+    pull_policy: always
+    environment:
+      - LAKEKEEPER__PG_ENCRYPTION_KEY=This-is-NOT-Secure!
+      - LAKEKEEPER__PG_DATABASE_URL_READ=postgresql://postgres:postgres@db:5432/postgres
+      - LAKEKEEPER__PG_DATABASE_URL_WRITE=postgresql://postgres:postgres@db:5432/postgres
+      - RUST_LOG=trace,axum=trace,sqlx=trace,lakekeeper=trace
+    command: [ "serve" ]
+    healthcheck:
+      test: [ "CMD", "/home/nonroot/lakekeeper", "healthcheck" ]
+      interval: 1s
+      timeout: 10s
+      retries: 3
+      start_period: 3s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      vda:
+    ports:
+      - "8181:8181"
+
+  migrate:
+    image: asia-south1-docker.pkg.dev/izac-349007/reports/lakekeeper
+    pull_policy: always
+    environment:
+      - LAKEKEEPER__PG_ENCRYPTION_KEY=This-is-NOT-Secure!
+      - LAKEKEEPER__PG_DATABASE_URL_READ=postgresql://postgres:postgres@db:5432/postgres
+      - LAKEKEEPER__PG_DATABASE_URL_WRITE=postgresql://postgres:postgres@db:5432/postgres
+      - RUST_LOG=info
+    restart: "no"
+    command: [ "migrate" ]
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      vda:
+
+  bootstrap:
+    image: curlimages/curl
+    depends_on:
+      lakekeeper:
+        condition: service_healthy
+    restart: "no"
+    command:
+      - -w
+      - "%{http_code}"
+      - "-X"
+      - "POST"
+      - "-v"
+      - "http://lakekeeper:8181/management/v1/bootstrap"
+      - "-H"
+      - "Content-Type: application/json"
+      - "--data"
+      - '{"accept-terms-of-use": true}'
+      - "-o"
+      - "/dev/null"
+      # - "--fail-with-body"
+    networks:
+      vda:
+
+  initialwarehouse:
+    image: curlimages/curl
+    depends_on:
+      lakekeeper:
+        condition: service_healthy
+      bootstrap:
+        condition: service_completed_successfully
+      createbuckets:
+        condition: service_completed_successfully
+    restart: "no"
+    command:
+      - -w
+      - "%{http_code}"
+      - "-X"
+      - "POST"
+      - "-v"
+      - "http://lakekeeper:8181/management/v1/warehouse"
+      - "-H"
+      - "Content-Type: application/json"
+      - "--data"
+      - "@create-default-warehouse.json"
+      - "-o"
+      - "/dev/null"
+      # - "--fail-with-body"
+    volumes:
+      - ./create-default-warehouse.json:/home/curl_user/create-default-warehouse.json
+    networks:
+      vda:
+
+  db:
+    image: postgres:17
+    environment:
+      - POSTGRES_PASSWORD=postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -p 5432 -d postgres"]
+      interval: 2s
+      timeout: 10s
+      retries: 2
+      start_period: 10s
+    networks:
+      vda:
+
+  minio:
+    image: minio/minio:RELEASE.2025-07-23T15-54-02Z
+    environment:
+      - MINIO_ROOT_USER=minio-root-user
+      - MINIO_ROOT_PASSWORD=minio-root-password
+    command: ["server", "--console-address", ":9001", "/data"]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 2s
+      timeout: 10s
+      retries: 2
+      start_period: 15s
+    networks:
+      vda:
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+  createbuckets:
+    image: minio/minio:RELEASE.2025-07-23T15-54-02Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: on-failure
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      /usr/bin/mc alias set dockerminio http://minio:9000 minio-root-user minio-root-password;
+      /usr/bin/mc mb --ignore-existing dockerminio/examples;
+      /usr/bin/mc mb --ignore-existing dockerminio/hummock001;
+      exit 0;
+      "
+    networks:
+      vda:
+
+  trino:
+    image: trinodb/trino:476
+    environment:
+      - CATALOG_MANAGEMENT=dynamic
+    healthcheck:
+      test: ["CMD", "curl", "-I", "http://localhost:8080/v1/status"]
+      interval: 2s
+      timeout: 10s
+      retries: 2
+      start_period: 10s
+    ports:
+      - "9999:8080"
+    networks:
+      - vda
+
+  starrocks:
+    image: starrocks/allin1-ubuntu:4.0.1
+    healthcheck:
+      test: ["CMD", "curl", "-I", "http://starrocks:8030/api/health"]
+      interval: 2s
+      timeout: 10s
+      retries: 2
+      start_period: 30s
+    ports:
+      - "9030:9030"
+      - "8030:8030"
+    networks:
+      - vda
+  
+  risingwave:
+    image: "risingwavelabs/risingwave:v2.7.1"
+    depends_on:
+      createbuckets:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+    command: "standalone --meta-opts=\" \
+      --listen-addr 0.0.0.0:5690 \
+      --advertise-addr 0.0.0.0:5690 \
+      --dashboard-host 0.0.0.0:5691 \
+      --backend sql \
+      --sql-endpoint postgres://postgres:@db:5432/postgres \
+      --state-store hummock+minio://minio-root-user:minio-root-password@minio-0:9301/hummock001 \
+      --data-directory hummock_001 \" \
+      --compute-opts=\" \
+      --listen-addr 0.0.0.0:5688 \
+      --advertise-addr 0.0.0.0:5688 \
+      --async-stack-trace verbose \
+      --parallelism 8 \
+      --total-memory-bytes 1615416934 \
+      --role both \
+      --meta-address http://0.0.0.0:5690 \" \
+      --frontend-opts=\" \
+      --listen-addr 0.0.0.0:4566 \
+      --advertise-addr 0.0.0.0:4566 \
+      --health-check-listener-addr 0.0.0.0:6786 \
+      --meta-addr http://0.0.0.0:5690 \" \
+      --compactor-opts=\" \
+      --listen-addr 0.0.0.0:6660 \
+      --advertise-addr 0.0.0.0:6660 \
+      --meta-address http://0.0.0.0:5690 \""
+    ports:
+      - "4566:4566"
+      - "5690:5690"
+    environment:
+      ENABLE_TELEMETRY: "false"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - bash -c 'printf \"GET / HTTP/1.1\n\n\" > /dev/tcp/127.0.0.1/6660; exit $$?;'
+        - bash -c 'printf \"GET / HTTP/1.1\n\n\" > /dev/tcp/127.0.0.1/5688; exit $$?;'
+        - bash -c 'printf \"GET / HTTP/1.1\n\n\" > /dev/tcp/127.0.0.1/4566; exit $$?;'
+        - bash -c 'printf \"GET / HTTP/1.1\n\n\" > /dev/tcp/127.0.0.1/5690; exit $$?;'
+      interval: 1s
+      timeout: 5s
+    restart: always
 
 networks:
   vda:
