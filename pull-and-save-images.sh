@@ -3,92 +3,58 @@
 # Exit on error
 set -e
 
-# Create docker directory if it doesn't exist
-mkdir -p docker
+# Target directory
+PACKAGE_DIR="docker/nbe_offline_package"
 
-# Load environment variables from vda/.env
-if [ -f "vda/.env" ]; then
-  echo "Loading environment variables from vda/.env..."
-  while IFS= read -r line || [ -n "$line" ]; do
-    [[ "$line" =~ ^[[:space:]]*# ]] && continue
-    [[ -z "$line" ]] && continue
-    if [[ "$line" == *"="* ]]; then
-      key=$(echo "$line" | cut -d'=' -f1 | xargs)
-      val=$(echo "$line" | cut -d'=' -f2- | xargs)
-      val="${val#\"}"
-      val="${val%\"}"
-      val="${val#\'}"
-      val="${val%\'}"
-      export "$key"="$val"
-    fi
-  done < "vda/.env"
-fi
+# Create the target directory if it doesn't exist
+mkdir -p "$PACKAGE_DIR"
 
-# Load environment variables from vda/.env-vda
-if [ -f "vda/.env-vda" ]; then
-  echo "Loading environment variables from vda/.env-vda..."
-  while IFS= read -r line || [ -n "$line" ]; do
-    [[ "$line" =~ ^[[:space:]]*# ]] && continue
-    [[ -z "$line" ]] && continue
-    if [[ "$line" == *"="* ]]; then
-      key=$(echo "$line" | cut -d'=' -f1 | xargs)
-      val=$(echo "$line" | cut -d'=' -f2- | xargs)
-      val="${val#\"}"
-      val="${val%\"}"
-      val="${val#\'}"
-      val="${val%\'}"
-      export "$key"="$val"
-    fi
-  done < "vda/.env-vda"
-fi
+# Static list of resolved images extracted from vda-deploy.yaml
+IMAGES=(
+  "microuidigital/superset-app:latest"
+  "asia-south1-docker.pkg.dev/izac-349007/reports/docker.getcollate.io/openmetadata/postgresql:1.12.1"
+  "redis:7"
+  "asia-south1-docker.pkg.dev/izac-349007/reports/docker.elastic.co/elasticsearch/elasticsearch:9.3.0"
+  "asia-south1-docker.pkg.dev/izac-349007/ssm-tool/keycloak:21.1.1-local"
+  "microuidigital/nginx:latest"
+  "asia-south1-docker.pkg.dev/izac-349007/ssm-tool/vda-client:c400a958215603fb0c5e05341bfe12755998aca2"
+  "asia-south1-docker.pkg.dev/izac-349007/ssm-tool/vda-server:c400a958215603fb0c5e05341bfe12755998aca2"
+  "prohankumar/metadata:2"
+  "microuidigital/vda-gitcontrolapp:latest"
+  "asia-south1-docker.pkg.dev/izac-349007/reports/docker.getcollate.io/openmetadata/server:1.12.1"
+  "asia-south1-docker.pkg.dev/izac-349007/reports/docker.getcollate.io/openmetadata/ingestion:1.12.1"
+  "surrealdb/surrealdb:v3.0.5"
+  "marquezproject/marquez:latest"
+  "marquezproject/marquez-web:latest"
+  "qdrant/qdrant:latest"
+  "temporalio/auto-setup"
+  "temporalio/admin-tools"
+  "temporalio/ui"
+  "confluentinc/cp-schema-registry:7.6.0"
+  "apache/kafka:latest"
+  "redis:7.4.0"
+  "asia-south1-docker.pkg.dev/izac-349007/reports/dia-server"
+  "asia-south1-docker.pkg.dev/izac-349007/reports/di-server"
+  "asia-south1-docker.pkg.dev/izac-349007/reports/kc"
+  "asia-south1-docker.pkg.dev/izac-349007/reports/local-model:latest"
+  "asia-south1-docker.pkg.dev/izac-349007/reports/pyspark-notebook"
+  "asia-south1-docker.pkg.dev/izac-349007/reports/lakekeeper"
+  "curlimages/curl"
+  "postgres:17"
+  "minio/minio:RELEASE.2025-07-23T15-54-02Z"
+  "trinodb/trino:476"
+  "starrocks/allin1-ubuntu:4.0.1"
+  "risingwavelabs/risingwave:v2.7.1"
+  "asia-south1-docker.pkg.dev/izac-349007/reports/offline-rpms"
+  "asia-south1-docker.pkg.dev/izac-349007/reports/offline-venv"
+)
 
-YAML_FILE="vda-deploy.yaml"
-if [ ! -f "$YAML_FILE" ]; then
-  echo "Error: $YAML_FILE not found."
-  exit 1
-fi
-
-echo "Parsing images from $YAML_FILE..."
-
-# Temporary file to store raw extracted images
-TEMP_IMAGES_FILE=$(mktemp)
-trap 'rm -f "$TEMP_IMAGES_FILE"' EXIT
-
-# Extract images, ignoring comments
-while IFS= read -r line || [ -n "$line" ]; do
-  # Skip commented lines
-  if [[ "$line" =~ ^[[:space:]]*# ]]; then
-    continue
-  fi
-
-  # Check if line contains image: or x-superset-image:
-  if [[ "$line" =~ [[:space:]]*(image:|x-superset-image:) ]]; then
-    # Extract the image name using sed
-    image_raw=$(echo "$line" | sed -E 's/^[[:space:]]*(image:|x-superset-image:)[[:space:]]*(&[^[:space:]]+[[:space:]]+)?["'\'']?([^"'\''[:space:]]+)["'\'']?.*$/\3/')
-    if [ -n "$image_raw" ]; then
-      echo "$image_raw" >> "$TEMP_IMAGES_FILE"
-    fi
-  fi
-done < "$YAML_FILE"
-
-# Resolve variables and get unique images
-declare -A unique_images
-while IFS= read -r img_raw || [ -n "$img_raw" ]; do
-  # Resolve environment variables
-  resolved_img=$(eval echo "\"$img_raw\"")
-  if [ -n "$resolved_img" ]; then
-    unique_images["$resolved_img"]=1
-  fi
-done < "$TEMP_IMAGES_FILE"
-
-echo "Found the following unique docker images:"
-for img in "${!unique_images[@]}"; do
-  echo "  - $img"
-done
+echo "Preparing to process ${#IMAGES[@]} docker images..."
+echo "Output package directory: $PACKAGE_DIR"
 
 # Pull and save images
-for img in "${!unique_images[@]}"; do
-  echo -e "\n--- Processing $img ---"
+for img in "${IMAGES[@]}"; do
+  echo -e "\n--- Processing: $img ---"
   
   echo "Running: docker pull $img"
   if ! docker pull "$img"; then
@@ -96,9 +62,9 @@ for img in "${!unique_images[@]}"; do
     continue
   fi
   
-  # Create a safe filename for the tar
+  # Create a safe filename for the tar by substituting '/' and ':' with '_'
   safe_name=$(echo "$img" | sed 's/[\/:]/_/g').tar
-  tar_path="docker/$safe_name"
+  tar_path="$PACKAGE_DIR/$safe_name"
   
   echo "Running: docker save -o $tar_path $img"
   if docker save -o "$tar_path" "$img"; then

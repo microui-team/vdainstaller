@@ -1160,7 +1160,6 @@ services:
 
   lakekeeper:
     image: asia-south1-docker.pkg.dev/izac-349007/reports/lakekeeper
-    pull_policy: always
     environment:
       - LAKEKEEPER__PG_ENCRYPTION_KEY=This-is-NOT-Secure!
       - LAKEKEEPER__PG_DATABASE_URL_READ=postgresql://postgres:postgres@db:5432/postgres
@@ -1187,7 +1186,6 @@ services:
 
   migrate:
     image: asia-south1-docker.pkg.dev/izac-349007/reports/lakekeeper
-    pull_policy: always
     environment:
       - LAKEKEEPER__PG_ENCRYPTION_KEY=This-is-NOT-Secure!
       - LAKEKEEPER__PG_DATABASE_URL_READ=postgresql://postgres:postgres@db:5432/postgres

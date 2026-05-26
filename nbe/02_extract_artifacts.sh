@@ -2,15 +2,14 @@
 set -e
 
 # Default registry if none provided
-REGISTRY=${1:-"your-docker-registry.local:5000/nbe_poc"}
-OUTPUT_DIR="nbe_offline_package"
+REGISTRY=${1:-"asia-south1-docker.pkg.dev/izac-349007/reports"}
+OUTPUT_DIR="/docker/nbe_offline_package"
 
 echo "=== 1. Pulling Images from Registry ==="
 docker pull ${REGISTRY}/offline-rpms:latest
 docker pull ${REGISTRY}/offline-venv:latest
 
 echo "=== 2. Creating Local Output Directory ==="
-rm -rf ${OUTPUT_DIR}
 mkdir -p ${OUTPUT_DIR}/rpms
 
 echo "=== 3. Extracting System RPMs ==="
