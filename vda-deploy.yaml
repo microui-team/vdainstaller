@@ -197,13 +197,13 @@ services:
       - KEYCLOAK_ADMIN_USERNAME=${KEYCLOAK_ADMIN_USERNAME}
       - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD}
       - DATABASE_URL=${DATABASE_URL}
-      - DATALOADER_URL=http://metadata-api:8000
-      - DATASEARCH_URL=http://metadata-api:8000
+      - DATALOADER_URL=http://metadata-api:8200
+      - DATASEARCH_URL=http://metadata-api:8200
       - LLMAPI_URL=http://api-llmapi:8081
-      - SUPERSET_URL=http://metadata-api:8000
+      - SUPERSET_URL=http://metadata-api:8200
       - ORIG_SUPERSET_URL=${ORIG_SUPERSET_URL}
       - ORIG_SUPERSET_TOKEN=${ORIG_SUPERSET_TOKEN}
-      - AMUNDSEN_METADATA_URL=http://metadata-api:8000
+      - AMUNDSEN_METADATA_URL=http://metadata-api:8200
       - UPLOAD_DIRECTORY=/uploads/
       - MESSAGE_QUEUE_NAME=amundsen_queue
       - MESSAGE_RESPONSE_QUEUE_NAME=amundsen_response_queue
@@ -213,7 +213,7 @@ services:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - REALM_NAME=${REALM_NAME}
-      - SENTENCE_TRANSFORMER_URL=http://metadata-api:8000
+      - SENTENCE_TRANSFORMER_URL=http://metadata-api:8200
       - DATA_INGESTION_URL=${DATA_INGESTION_URL}
       - GIT_CONTROL_URL=http://git-control-app:8008
       - GIT_TOKEN=${GIT_TOKEN}
@@ -272,7 +272,7 @@ services:
       openmetadata-server:
         condition: service_healthy
     ports:
-      - "8007:8000"
+      - "8007:8200"
     command: ["python", "-m", "src.main"]
     volumes:
       - ./cdm_complete_metadata.jsonl:/app/cdm_complete_metadata.jsonl
