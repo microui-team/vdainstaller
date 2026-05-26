@@ -4,7 +4,7 @@
 set -e
 
 # Target directory
-PACKAGE_DIR="docker/nbe_offline_package"
+PACKAGE_DIR="/docker/nbe_offline_package"
 
 # Create the target directory if it doesn't exist
 mkdir -p "$PACKAGE_DIR"
