@@ -7,7 +7,7 @@ set -e
 PACKAGE_DIR="/docker/nbe_offline_package"
 
 # Create the target directory if it doesn't exist
-mkdir -p "$PACKAGE_DIR"
+#mkdir -p "$PACKAGE_DIR"
 
 # Static list of resolved images extracted from vda-deploy.yaml
 IMAGES=(
