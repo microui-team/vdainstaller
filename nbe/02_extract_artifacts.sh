@@ -10,9 +10,11 @@ OUTPUT_DIR="/docker/nbe_offline_package"
 
 mkdir -p ${OUTPUT_DIR}/rpms
 
-docker run --rm -v $(pwd)/${OUTPUT_DIR}/rpms:/export ${REGISTRY}/offline-rpms:latest bash -c "cp -r /rpms/* /export/ && chown -R $(id -u):$(id -g) /export"
+docker run --rm -v ${OUTPUT_DIR}/rpms:/export ${REGISTRY}/offline-rpms:latest bash -c "cp -r /rpms/* /export/ && chown -R $(id -u):$(id -g) /export"
 
-docker run --rm -v $(pwd)/${OUTPUT_DIR}:/export ${REGISTRY}/offline-venv:latest bash -c "cp /artifacts/wheelhouse.tar.gz /export/ && if [ -f /artifacts/jars.tar.gz ]; then cp /artifacts/jars.tar.gz /export/; fi && cp /build/requirements.txt /export/ && cp -r /artifacts/poc_benchmarks /export/ && cp /artifacts/*.txt /export/ && chown -R $(id -u):$(id -g) /export"
+docker run --rm -v ${OUTPUT_DIR}:/export ${REGISTRY}/offline-venv:latest bash -c "cp /artifacts/wheelhouse.tar.gz /export/ && if [ -f /artifacts/jars.tar.gz ]; then cp /artifacts/jars.tar.gz /export/; fi && cp /build/requirements.txt /export/ && cp -r /artifacts/poc_benchmarks /export/ && cp /artifacts/*.txt /export/ && chown -R $(id -u):$(id -g) /export"
+
+rm ${OUTPUT_DIR}/*.txt
 
 # cp nbe/03_install_on_mapr.sh ${OUTPUT_DIR}/03_install_on_mapr.sh
 # chmod +x ${OUTPUT_DIR}/03_install_on_mapr.sh
