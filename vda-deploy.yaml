@@ -164,7 +164,7 @@ services:
       - "8080:8080"
     networks:
       - vda
-
+      
   nginx:
     image: microuidigital/nginx:latest
     restart: unless-stopped
@@ -1375,6 +1375,52 @@ services:
       interval: 1s
       timeout: 5s
     restart: always
+
+  spark-master:
+    image: prohankumar/spark
+    container_name: spark-master
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+    environment:
+      - SPARK_MASTER_HOST=spark-master
+    ports:
+      - "8780:8080"
+      - "7077:7077"
+    networks:
+      - vda
+
+  spark-worker:
+    image: prohankumar/spark
+    container_name: spark-worker
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+    environment:
+      - SPARK_WORKER_MEMORY=1G
+      - SPARK_WORKER_CORES=1
+    depends_on:
+      - spark-master
+    ports:
+      - "8381:8081"
+    networks:
+      - vda
+    extra_hosts:
+
+
+  spark-connect:
+    image: prohankumar/spark
+    container_name: spark-connect
+    command: >
+      /opt/spark/bin/spark-submit
+      --master spark://spark-master:7077
+      --conf spark.connect.grpc.binding.port=15002
+      --class org.apache.spark.sql.connect.service.SparkConnectServer
+      --name "Spark Connect Server"
+      spark-internal
+    ports:
+      - "15002:15002"
+    depends_on:
+      - spark-master
+      - spark-worker
+    networks:
+      - vda
 
 networks:
   vda:
